@@ -11,6 +11,7 @@ import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerImpl
 import com.intellij.codeInsight.daemon.impl.HighlightInfo
 import com.intellij.codeInsight.daemon.impl.IdentifierHighlighterPassFactory
 import com.intellij.codeInsight.lookup.LookupElement
+import com.intellij.codeInspection.InspectionProfileEntry
 import com.intellij.ide.startup.impl.StartupManagerImpl
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.application.runWriteAction
@@ -23,13 +24,11 @@ import com.intellij.openapi.projectRoots.JavaSdk
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.projectRoots.impl.JavaAwareProjectJdkTableImpl
 import com.intellij.openapi.startup.StartupManager
+import com.intellij.profile.codeInspection.ProjectInspectionProfileManager
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
-import com.intellij.testFramework.EditorTestUtil
-import com.intellij.testFramework.RunAll
-import com.intellij.testFramework.TestDataProvider
-import com.intellij.testFramework.UsefulTestCase
+import com.intellij.testFramework.*
 import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl
 import com.intellij.util.ArrayUtilRt
 import com.intellij.util.ThrowableRunnable
@@ -92,7 +91,7 @@ abstract class AbstractPerformanceProjectsTest : UsefulTestCase() {
         val project = openProject()
         try {
             filesToHighlight.forEach {
-                val perfHighlightFile = perfHighlightFile(project, it, stats, WARM_UP)
+                val perfHighlightFile = perfHighlightFile(project, it, stats, note = WARM_UP)
                 assertTrue("kotlin project has been not imported properly", perfHighlightFile.isNotEmpty())
             }
         } finally {
@@ -326,7 +325,7 @@ abstract class AbstractPerformanceProjectsTest : UsefulTestCase() {
                 stats(stats)
                 warmUpIterations(8)
                 iterations(15)
-                profileEnabled(true)
+                profilerEnabled(true)
                 setUp {
                     val markerOffset = editor.document.text.indexOf(marker)
                     assertTrue("marker '$marker' not found in $fileName", markerOffset > 0)
@@ -444,7 +443,7 @@ abstract class AbstractPerformanceProjectsTest : UsefulTestCase() {
                 }
                 commitAllDocuments()
             }
-            profileEnabled(true)
+            profilerEnabled(true)
         }
     }
 
@@ -530,7 +529,7 @@ abstract class AbstractPerformanceProjectsTest : UsefulTestCase() {
                 }
                 commitAllDocuments()
             }
-            profileEnabled(true)
+            profilerEnabled(true)
         }
     }
 
@@ -605,7 +604,7 @@ abstract class AbstractPerformanceProjectsTest : UsefulTestCase() {
                     commitAllDocuments()
                 }
             }
-            profileEnabled(true)
+            profilerEnabled(true)
         }
     }
 
@@ -621,39 +620,53 @@ abstract class AbstractPerformanceProjectsTest : UsefulTestCase() {
         }
     }
 
-    protected fun perfHighlightFile(name: String, stats: Stats): List<HighlightInfo> =
-        perfHighlightFile(project(), name, stats)
+    protected fun perfHighlightFile(
+        name: String,
+        stats: Stats,
+        tools: Array<InspectionProfileEntry>? = null,
+        note: String = ""
+    ): List<HighlightInfo> = perfHighlightFile(project(), name, stats, tools = tools, note = note)
 
     protected fun perfHighlightFile(
         project: Project,
         fileName: String,
         stats: Stats,
+        tools: Array<InspectionProfileEntry>? = null,
         note: String = ""
     ): List<HighlightInfo> {
-        return highlightFile {
-            val isWarmUp = note == WARM_UP
-            var highlightInfos: List<HighlightInfo> = emptyList()
-            performanceTest<EditorFile, List<HighlightInfo>> {
-                name("highlighting ${notePrefix(note)}${simpleFilename(fileName)}")
-                stats(stats)
-                warmUpIterations(if (isWarmUp) 1 else 3)
-                iterations(if (isWarmUp) 2 else 10)
-                setUp {
-                    it.setUpValue = openFileInEditor(project, fileName)
+        val profileManager = ProjectInspectionProfileManager.getInstance(project)
+        val currentProfile = profileManager.currentProfile
+        tools?.let {
+            configureInspections(it, project, project)
+        }
+        try {
+            return highlightFile {
+                val isWarmUp = note == WARM_UP
+                var highlightInfos: List<HighlightInfo> = emptyList()
+                performanceTest<EditorFile, List<HighlightInfo>> {
+                    name("highlighting ${notePrefix(note)}${simpleFilename(fileName)}")
+                    stats(stats)
+                    warmUpIterations(if (isWarmUp) 1 else 3)
+                    iterations(if (isWarmUp) 2 else 10)
+                    setUp {
+                        it.setUpValue = openFileInEditor(project, fileName)
+                    }
+                    test {
+                        val file = it.setUpValue
+                        it.value = highlightFile(project, file!!.psiFile)
+                    }
+                    tearDown {
+                        highlightInfos = it.value ?: emptyList()
+                        commitAllDocuments()
+                        FileEditorManager.getInstance(project).closeFile(it.setUpValue!!.psiFile.virtualFile)
+                        PsiManager.getInstance(project).dropPsiCaches()
+                    }
+                    profilerEnabled(!isWarmUp)
                 }
-                test {
-                    val file = it.setUpValue
-                    it.value = highlightFile(project, file!!.psiFile)
-                }
-                tearDown {
-                    highlightInfos = it.value ?: emptyList()
-                    commitAllDocuments()
-                    FileEditorManager.getInstance(project).closeFile(it.setUpValue!!.psiFile.virtualFile)
-                    PsiManager.getInstance(project).dropPsiCaches()
-                }
-                profileEnabled(!isWarmUp)
+                highlightInfos
             }
-            highlightInfos
+        } finally {
+            profileManager.setCurrentProfile(currentProfile)
         }
     }
 
@@ -701,7 +714,7 @@ abstract class AbstractPerformanceProjectsTest : UsefulTestCase() {
                 }
                 it.value?.let { v -> assertNotNull(v) }
             }
-            profileEnabled(true)
+            profilerEnabled(true)
             checkStability(false)
         }
     }
