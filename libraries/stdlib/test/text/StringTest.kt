@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2018 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -11,6 +11,7 @@ import test.collections.behaviors.iteratorBehavior
 import test.collections.behaviors.setBehavior
 import test.collections.compare
 import kotlin.math.sign
+import kotlin.native.concurrent.SharedImmutable
 import kotlin.random.Random
 
 
@@ -18,6 +19,7 @@ fun createString(content: String): CharSequence = content
 fun createStringBuilder(content: String): CharSequence = StringBuilder((content as Any).toString()) // required for Rhino JS
 
 
+@SharedImmutable
 val charSequenceBuilders = listOf(::createString, ::createStringBuilder)
 
 fun withOneCharSequenceArg(f: ((String) -> CharSequence) -> Unit) {
@@ -46,11 +48,13 @@ fun Char.isAsciiUpperCase() = this in 'A'..'Z'
 
 class StringTest {
 
+    @Suppress("DEPRECATION")
     private fun testStringFromChars(expected: String, chars: CharArray, offset: Int, length: Int) {
         assertEquals(expected, String(chars, offset, length))
         assertEquals(expected, chars.concatToString(startIndex = offset, endIndex = offset + length))
     }
 
+    @Suppress("DEPRECATION")
     private fun testStringFromChars(expected: String, chars: CharArray) {
         assertEquals(expected, String(chars))
         assertEquals(expected, chars.concatToString())
@@ -61,6 +65,7 @@ class StringTest {
         testStringFromChars("Kotlin", chars, 0, chars.size)
     }
 
+    @Suppress("DEPRECATION")
     @Test fun stringFromCharArraySlice() {
         val chars: CharArray = charArrayOf('K', 'o', 't', 'l', 'i', 'n', ' ', 'r', 'u', 'l', 'e', 's')
         testStringFromChars("rule", chars, 7, 4)
@@ -74,6 +79,7 @@ class StringTest {
         assertTrue(longConcatString.all { it == 'k' })
     }
 
+    @Suppress("DEPRECATION")
     @Test fun stringFromCharArray() {
         val chars: CharArray = charArrayOf('K', 'o', 't', 'l', 'i', 'n')
         testStringFromChars("Kotlin", chars)
@@ -94,6 +100,7 @@ class StringTest {
         testStringFromChars("Ŭᎍ🀺", chars, 3, 4)
     }
 
+    @Suppress("DEPRECATION")
     @Test fun stringFromCharArrayOutOfBounds() {
         fun test(chars: CharArray) {
             assertFailsWith<IndexOutOfBoundsException> { String(chars, -1, 1) }
@@ -890,6 +897,23 @@ class StringTest {
         assertEquals("/b/", input.replace("ab", "/", ignoreCase = true))
 
         assertEquals("-a-b-b-A-b-", input.replace("", "-"))
+        assertEquals("-a-b-b-A-b-", input.replace("", "-", ignoreCase = true))
+
+        fun testIgnoreCase(chars: String) {
+            for ((i, c) in chars.withIndex()) {
+                val message = "Char: $c (${c.toInt()})"
+                val expectOneReplaced = chars.replaceRange(i..i, "_")
+                val expectAllReplaced = "_".repeat(chars.length)
+                assertEquals(expectOneReplaced, chars.replace(c, '_'), message)
+                assertEquals(expectAllReplaced, chars.replace(c, '_', ignoreCase = true), "$message, ignoreCase")
+                assertEquals(expectOneReplaced, chars.replace(c.toString(), "_"), "$message, as string")
+                assertEquals(expectAllReplaced, chars.replace(c.toString(), "_", ignoreCase = true), "$message, as string, ignoreCase")
+            }
+        }
+
+        testIgnoreCase("üÜ")
+        testIgnoreCase("öÖ")
+        testIgnoreCase("äÄ")
     }
 
     @Test fun replaceFirst() {
@@ -1237,6 +1261,11 @@ class StringTest {
         assertEquals("a ab abc abcd ".toList(), result)
     }
 
+    @Test fun flatMapIndexed() = withOneCharSequenceArg("bdfi") { data ->
+        val result = data.flatMapIndexed { index, c -> ('a'..c).drop(index) + ' ' }
+        assertEquals("ab bcd cdef defghi ".toList(), result)
+    }
+
     @Test fun fold() = withOneCharSequenceArg { arg1 ->
         // calculate number of digits in the string
         val data = arg1("a1b2c3def")
@@ -1387,7 +1416,7 @@ class StringTest {
     }
 
     @Test
-    fun scanReduceIndexed() = withOneCharSequenceArg { arg1 ->
+    fun runningReduceIndexed() = withOneCharSequenceArg { arg1 ->
         for (size in 0 until 4) {
             val expected = listOf(0, 1, 6, 27).take(size).map { it.toChar() }
             val source = arg1((0.toChar() until size.toChar()).joinToString(separator = ""))
@@ -1630,8 +1659,8 @@ ${"    "}
 
         assertEquals(23, deindented.lines().size)
         val indents = deindented.lines().map { "^\\s*".toRegex().find(it)!!.value.length }
-        assertEquals(0, indents.min())
-        assertEquals(42, indents.max())
+        assertEquals(0, indents.minOrNull())
+        assertEquals(42, indents.maxOrNull())
         assertEquals(1, deindented.lines().count { it.isEmpty() })
     }
 

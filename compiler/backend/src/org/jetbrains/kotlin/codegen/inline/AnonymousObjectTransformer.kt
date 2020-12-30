@@ -42,8 +42,7 @@ class AnonymousObjectTransformer(
     private val fieldNames = hashMapOf<String, MutableList<String>>()
 
     private var constructor: MethodNode? = null
-    private var sourceInfo: String? = null
-    private var debugInfo: String? = null
+    private lateinit var sourceMap: SMAP
     private lateinit var sourceMapper: SourceMapper
     private val languageVersionSettings = inliningContext.state.languageVersionSettings
 
@@ -56,6 +55,9 @@ class AnonymousObjectTransformer(
         val methodsToTransform = ArrayList<MethodNode>()
         val metadataReader = ReadKotlinClassHeaderAnnotationVisitor()
         lateinit var superClassName: String
+        var sourceInfo: String? = null
+        var debugInfo: String? = null
+        var debugMetadataAnnotation: AnnotationNode? = null
 
         createClassReader().accept(object : ClassVisitor(Opcodes.API_VERSION, classBuilder.visitor) {
             override fun visit(version: Int, access: Int, name: String, signature: String?, superName: String, interfaces: Array<String>) {
@@ -76,7 +78,8 @@ class AnonymousObjectTransformer(
                     val innerClassesInfo = FileBasedKotlinClass.InnerClassesInfo()
                     return FileBasedKotlinClass.convertAnnotationVisitor(metadataReader, desc, innerClassesInfo)
                 } else if (desc == DEBUG_METADATA_ANNOTATION_ASM_TYPE.descriptor) {
-                    return null
+                    debugMetadataAnnotation = AnnotationNode(desc)
+                    return debugMetadataAnnotation
                 }
                 return super.visitAnnotation(desc, visible)
             }
@@ -113,22 +116,12 @@ class AnonymousObjectTransformer(
             override fun visitEnd() {}
         }, ClassReader.SKIP_FRAMES)
 
-        if (!inliningContext.isInliningLambda) {
-            sourceMapper = if (debugInfo != null && !debugInfo!!.isEmpty()) {
-                SourceMapper.createFromSmap(SMAPParser.parse(debugInfo!!))
-            } else {
-                //seems we can't do any clever mapping cause we don't know any about original class name
-                IdenticalSourceMapper
-            }
-            if (sourceInfo != null && !GENERATE_SMAP) {
-                classBuilder.visitSource(sourceInfo!!, debugInfo)
-            }
-        } else {
-            if (sourceInfo != null) {
-                classBuilder.visitSource(sourceInfo!!, debugInfo)
-            }
-            sourceMapper = IdenticalSourceMapper
-        }
+        // When regenerating objects in inline lambdas, keep the old SMAP and don't remap the line numbers to
+        // save time. The result is effectively the same anyway.
+        val debugInfoToParse = if (inliningContext.isInliningLambda) null else debugInfo
+        val (firstLine, lastLine) = (methodsToTransform + listOfNotNull(constructor)).lineNumberRange()
+        sourceMap = SMAPParser.parseOrCreateDefault(debugInfoToParse, sourceInfo, oldObjectType.internalName, firstLine, lastLine)
+        sourceMapper = SourceMapper(sourceMap.fileMappings.firstOrNull { it.name == sourceInfo }?.toSourceInfo())
 
         val allCapturedParamBuilder = ParametersBuilder.newBuilder()
         val constructorParamBuilder = ParametersBuilder.newBuilder()
@@ -146,12 +139,20 @@ class AnonymousObjectTransformer(
             methodsToTransform,
             superClassName
         )
+        var putDebugMetadata = false
         loop@ for (next in methodsToTransform) {
             val deferringVisitor =
                 when {
                     coroutineTransformer.shouldSkip(next) -> continue@loop
                     coroutineTransformer.shouldGenerateStateMachine(next) -> coroutineTransformer.newMethod(next)
-                    else -> newMethod(classBuilder, next)
+                    else -> {
+                        // Debug metadata is not put, but we should keep, since we do not generate state-machine,
+                        // if the lambda does not capture crossinline lambdas.
+                        if (coroutineTransformer.suspendLambdaWithGeneratedStateMachine(next)) {
+                            putDebugMetadata = true
+                        }
+                        newMethod(classBuilder, next)
+                    }
                 }
 
             if (next.name == "<clinit>") {
@@ -183,7 +184,11 @@ class AnonymousObjectTransformer(
             }
         }
 
-        classBuilder.visitSMAP(sourceMapper, !state.languageVersionSettings.supportsFeature(LanguageFeature.CorrectSourceMappingSyntax))
+        if (GENERATE_SMAP && !inliningContext.isInliningLambda) {
+            classBuilder.visitSMAP(sourceMapper, !state.languageVersionSettings.supportsFeature(LanguageFeature.CorrectSourceMappingSyntax))
+        } else if (sourceInfo != null) {
+            classBuilder.visitSource(sourceInfo!!, debugInfo)
+        }
 
         val visitor = classBuilder.visitor
         innerClassNodes.forEach { node ->
@@ -193,6 +198,13 @@ class AnonymousObjectTransformer(
         val header = metadataReader.createHeader()
         if (header != null) {
             writeTransformedMetadata(header, classBuilder)
+        }
+
+        // debugMetadataAnnotation can be null in LV < 1.3
+        if (putDebugMetadata && debugMetadataAnnotation != null) {
+            visitor.visitAnnotation(debugMetadataAnnotation!!.desc, true).also {
+                debugMetadataAnnotation!!.accept(it)
+            }
         }
 
         writeOuterInfo(visitor)
@@ -223,7 +235,7 @@ class AnonymousObjectTransformer(
                 }
                 return@action
             }
-            AsmUtil.writeAnnotationData(av, newProto, newStringTable)
+            DescriptorAsmUtil.writeAnnotationData(av, newProto, newStringTable)
         }
     }
 
@@ -296,7 +308,7 @@ class AnonymousObjectTransformer(
             remapper,
             isSameModule,
             "Transformer for " + transformationInfo.oldClassName,
-            sourceMapper,
+            SourceMapCopier(sourceMapper, sourceMap),
             InlineCallSiteInfo(
                 transformationInfo.oldClassName,
                 sourceNode.name,
@@ -364,7 +376,7 @@ class AnonymousObjectTransformer(
         val capturedFieldInitializer = InstructionAdapter(constructorVisitor)
         fieldInfoWithSkipped.forEachIndexed { paramIndex, fieldInfo ->
             if (!newFieldsWithSkipped[paramIndex].skip) {
-                AsmUtil.genAssignInstanceFieldFromParam(fieldInfo, capturedIndexes[paramIndex], capturedFieldInitializer)
+                DescriptorAsmUtil.genAssignInstanceFieldFromParam(fieldInfo, capturedIndexes[paramIndex], capturedFieldInitializer)
             }
         }
 
@@ -407,7 +419,7 @@ class AnonymousObjectTransformer(
             }
         })
         constructorVisitor.visitEnd()
-        AsmUtil.genClosureFields(
+        DescriptorAsmUtil.genClosureFields(
             toNameTypePair(filterSkipped(newFieldsWithSkipped)), classBuilder
         )
     }

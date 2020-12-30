@@ -12,10 +12,11 @@ import org.jetbrains.kotlin.codegen.createFreeFakeLocalPropertyDescriptor
 import org.jetbrains.kotlin.codegen.serialization.JvmSerializationBindings.*
 import org.jetbrains.kotlin.codegen.state.GenerationState
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapperBase
+import org.jetbrains.kotlin.config.JVMConfigurationKeys
 import org.jetbrains.kotlin.config.JvmDefaultMode
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.descriptors.*
-import org.jetbrains.kotlin.load.java.JvmAbi
+import org.jetbrains.kotlin.load.java.DescriptorsJvmAbiUtil
 import org.jetbrains.kotlin.load.java.lazy.types.RawTypeImpl
 import org.jetbrains.kotlin.load.kotlin.NON_EXISTENT_CLASS_NAME
 import org.jetbrains.kotlin.metadata.ProtoBuf
@@ -32,6 +33,8 @@ import org.jetbrains.kotlin.resolve.descriptorUtil.classId
 import org.jetbrains.kotlin.resolve.descriptorUtil.isEffectivelyPrivateApi
 import org.jetbrains.kotlin.resolve.descriptorUtil.nonSourceAnnotations
 import org.jetbrains.kotlin.resolve.jvm.annotations.hasJvmDefaultAnnotation
+import org.jetbrains.kotlin.resolve.jvm.requiresFunctionNameManglingForParameterTypes
+import org.jetbrains.kotlin.resolve.jvm.requiresFunctionNameManglingForReturnType
 import org.jetbrains.kotlin.serialization.DescriptorSerializer
 import org.jetbrains.kotlin.serialization.DescriptorSerializer.Companion.writeVersionRequirement
 import org.jetbrains.kotlin.serialization.SerializerExtension
@@ -54,20 +57,23 @@ class JvmSerializerExtension @JvmOverloads constructor(
     private val languageVersionSettings = state.languageVersionSettings
     private val isParamAssertionsDisabled = state.isParamAssertionsDisabled
     private val unifiedNullChecks = state.unifiedNullChecks
+    private val functionsWithInlineClassReturnTypesMangled = state.functionsWithInlineClassReturnTypesMangled
     override val metadataVersion = state.metadataVersion
     private val jvmDefaultMode = state.jvmDefaultMode
+    private val approximator = state.typeApproximator
+    private val useOldManglingScheme = state.useOldManglingSchemeForFunctionsWithInlineClassesInSignatures
 
     override fun shouldUseTypeTable(): Boolean = useTypeTable
     override fun shouldSerializeFunction(descriptor: FunctionDescriptor): Boolean {
-        return classBuilderMode != ClassBuilderMode.ABI || descriptor.visibility != Visibilities.PRIVATE
+        return classBuilderMode != ClassBuilderMode.ABI || descriptor.visibility != DescriptorVisibilities.PRIVATE
     }
 
     override fun shouldSerializeProperty(descriptor: PropertyDescriptor): Boolean {
-        return classBuilderMode != ClassBuilderMode.ABI || descriptor.visibility != Visibilities.PRIVATE
+        return classBuilderMode != ClassBuilderMode.ABI || descriptor.visibility != DescriptorVisibilities.PRIVATE
     }
 
     override fun shouldSerializeTypeAlias(descriptor: TypeAliasDescriptor): Boolean {
-        return classBuilderMode != ClassBuilderMode.ABI || descriptor.visibility != Visibilities.PRIVATE
+        return classBuilderMode != ClassBuilderMode.ABI || descriptor.visibility != DescriptorVisibilities.PRIVATE
     }
 
     override fun shouldSerializeNestedClass(descriptor: ClassDescriptor): Boolean {
@@ -75,22 +81,28 @@ class JvmSerializerExtension @JvmOverloads constructor(
     }
 
     override fun serializeClass(
-            descriptor: ClassDescriptor,
-            proto: ProtoBuf.Class.Builder,
-            versionRequirementTable: MutableVersionRequirementTable,
-            childSerializer: DescriptorSerializer
+        descriptor: ClassDescriptor,
+        proto: ProtoBuf.Class.Builder,
+        versionRequirementTable: MutableVersionRequirementTable,
+        childSerializer: DescriptorSerializer
     ) {
         if (moduleName != JvmProtoBufUtil.DEFAULT_MODULE_NAME) {
             proto.setExtension(JvmProtoBuf.classModuleName, stringTable.getStringIndex(moduleName))
         }
         //TODO: support local delegated properties in new defaults scheme
         val containerAsmType =
-            if (DescriptorUtils.isInterface(descriptor)) typeMapper.mapDefaultImpls(descriptor) else typeMapper.mapClass(descriptor)
+            if (isInterface(descriptor)) typeMapper.mapDefaultImpls(descriptor) else typeMapper.mapClass(descriptor)
         writeLocalProperties(proto, containerAsmType, JvmProtoBuf.classLocalVariable)
         writeVersionRequirementForJvmDefaultIfNeeded(descriptor, proto, versionRequirementTable)
 
         if (jvmDefaultMode.forAllMethodsWithBody && isInterface(descriptor)) {
-            proto.setExtension(JvmProtoBuf.jvmClassFlags, JvmFlags.getClassFlags(true))
+            proto.setExtension(
+                JvmProtoBuf.jvmClassFlags,
+                JvmFlags.getClassFlags(
+                    jvmDefaultMode.forAllMethodsWithBody,
+                    JvmDefaultMode.ALL_COMPATIBILITY == jvmDefaultMode
+                )
+            )
         }
     }
 
@@ -135,7 +147,7 @@ class JvmSerializerExtension @JvmOverloads constructor(
         val localVariables = CodegenBinding.getLocalDelegatedProperties(codegenBinding, classAsmType) ?: return
 
         for (localVariable in localVariables) {
-            val propertyDescriptor = createFreeFakeLocalPropertyDescriptor(localVariable)
+            val propertyDescriptor = createFreeFakeLocalPropertyDescriptor(localVariable, approximator)
             val serializer = DescriptorSerializer.createForLambda(this)
             proto.addExtension(extension, serializer.propertyProto(propertyDescriptor)?.build() ?: continue)
         }
@@ -198,6 +210,20 @@ class JvmSerializerExtension @JvmOverloads constructor(
         if (descriptor.needsInlineParameterNullCheckRequirement()) {
             versionRequirementTable?.writeInlineParameterNullCheckRequirement(proto::addVersionRequirement)
         }
+
+        if (requiresFunctionNameManglingForReturnType(descriptor) &&
+            !DescriptorUtils.hasJvmNameAnnotation(descriptor) &&
+            !requiresFunctionNameManglingForParameterTypes(descriptor)
+        ) {
+            versionRequirementTable?.writeFunctionNameManglingForReturnTypeRequirement(proto::addVersionRequirement)
+        }
+
+        if ((requiresFunctionNameManglingForReturnType(descriptor) ||
+                    requiresFunctionNameManglingForParameterTypes(descriptor)) &&
+            !DescriptorUtils.hasJvmNameAnnotation(descriptor) && !useOldManglingScheme
+        ) {
+            versionRequirementTable?.writeNewFunctionNameManglingRequirement(proto::addVersionRequirement)
+        }
     }
 
     private fun MutableVersionRequirementTable.writeInlineParameterNullCheckRequirement(add: (Int) -> Unit) {
@@ -208,9 +234,19 @@ class JvmSerializerExtension @JvmOverloads constructor(
         }
     }
 
+    private fun MutableVersionRequirementTable.writeFunctionNameManglingForReturnTypeRequirement(add: (Int) -> Unit) {
+        if (functionsWithInlineClassReturnTypesMangled) {
+            add(writeVersionRequirement(1, 4, 0, ProtoBuf.VersionRequirement.VersionKind.LANGUAGE_VERSION, this))
+        }
+    }
+
+    private fun MutableVersionRequirementTable.writeNewFunctionNameManglingRequirement(add: (Int) -> Unit) {
+        add(writeVersionRequirement(1, 4, 30, ProtoBuf.VersionRequirement.VersionKind.COMPILER_VERSION, this))
+    }
+
     private fun FunctionDescriptor.needsInlineParameterNullCheckRequirement(): Boolean =
         isInline && !isSuspend && !isParamAssertionsDisabled &&
-                !Visibilities.isPrivate(visibility) &&
+                !DescriptorVisibilities.isPrivate(visibility) &&
                 (valueParameters.any { it.type.isFunctionType } || extensionReceiverParameter?.type?.isFunctionType == true)
 
     override fun serializeProperty(
@@ -253,16 +289,23 @@ class JvmSerializerExtension @JvmOverloads constructor(
         if (getter?.needsInlineParameterNullCheckRequirement() == true || setter?.needsInlineParameterNullCheckRequirement() == true) {
             versionRequirementTable?.writeInlineParameterNullCheckRequirement(proto::addVersionRequirement)
         }
+
+        if (!DescriptorUtils.hasJvmNameAnnotation(descriptor) && requiresFunctionNameManglingForReturnType(descriptor)) {
+            if (!useOldManglingScheme) {
+                versionRequirementTable?.writeNewFunctionNameManglingRequirement(proto::addVersionRequirement)
+            }
+            versionRequirementTable?.writeFunctionNameManglingForReturnTypeRequirement(proto::addVersionRequirement)
+        }
     }
 
     private fun PropertyDescriptor.isJvmFieldPropertyInInterfaceCompanion(): Boolean {
-        if (!JvmAbi.hasJvmFieldAnnotation(this)) return false
+        if (!DescriptorsJvmAbiUtil.hasJvmFieldAnnotation(this)) return false
 
         val container = containingDeclaration
         if (!DescriptorUtils.isCompanionObject(container)) return false
 
         val grandParent = (container as ClassDescriptor).containingDeclaration
-        return DescriptorUtils.isInterface(grandParent) || DescriptorUtils.isAnnotationClass(grandParent)
+        return isInterface(grandParent) || DescriptorUtils.isAnnotationClass(grandParent)
     }
 
     override fun serializeErrorType(type: KotlinType, builder: ProtoBuf.Type.Builder) {
@@ -274,7 +317,7 @@ class JvmSerializerExtension @JvmOverloads constructor(
         super.serializeErrorType(type, builder)
     }
 
-    private fun <K, V> getBinding(slice: SerializationMappingSlice<K, V>, key: K): V? =
+    private fun <K : Any, V> getBinding(slice: SerializationMappingSlice<K, V>, key: K): V? =
         bindings.get(slice, key) ?: globalBindings.get(slice, key)
 
     private inner class SignatureSerializer {

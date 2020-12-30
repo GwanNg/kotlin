@@ -6,13 +6,18 @@
 package org.jetbrains.kotlin.descriptors.commonizer.utils
 
 import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
 import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.*
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.resolve.constants.AnnotationValue
+import org.jetbrains.kotlin.resolve.constants.ConstantValue
+import org.jetbrains.kotlin.resolve.descriptorUtil.classId
 import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameSafe
 import org.jetbrains.kotlin.resolve.scopes.MemberScope
+import org.jetbrains.kotlin.types.AbbreviatedType
 import org.jetbrains.kotlin.types.KotlinType
-import org.jetbrains.kotlin.types.getAbbreviation
 import kotlin.contracts.ExperimentalContracts
 import kotlin.reflect.KCallable
 import kotlin.test.fail
@@ -224,6 +229,7 @@ internal class ComparingDeclarationsVisitor(
         context.assertFieldsEqual(expected::isCompanionObject, actual::isCompanionObject)
         context.assertFieldsEqual(expected::isData, actual::isData)
         context.assertFieldsEqual(expected::isInline, actual::isInline)
+        context.assertFieldsEqual(expected::isValue, actual::isValue)
         context.assertFieldsEqual(expected::isInner, actual::isInner)
         context.assertFieldsEqual(expected::isExternal, actual::isExternal)
         context.assertFieldsEqual(expected::isExpect, actual::isExpect)
@@ -242,10 +248,10 @@ internal class ComparingDeclarationsVisitor(
             context.assertSetsEqual(expectedSealedSubclassesFqNames, actualSealedSubclassesFqNames, "Sealed subclasses FQ names")
         }
 
-        val expectedSupertypeFqNames = expected.typeConstructor.supertypes.mapTo(HashSet()) { it.fqNameWithTypeParameters }
-        val actualSupertypeFqNames = actual.typeConstructor.supertypes.mapTo(HashSet()) { it.fqNameWithTypeParameters }
+        val expectedSupertypeSignatures = expected.typeConstructor.supertypes.mapTo(HashSet()) { it.signature }
+        val actualSupertypeSignatures = actual.typeConstructor.supertypes.mapTo(HashSet()) { it.signature }
 
-        context.assertSetsEqual(expectedSupertypeFqNames, actualSupertypeFqNames, "Supertypes FQ names")
+        context.assertSetsEqual(expectedSupertypeSignatures, actualSupertypeSignatures, "Supertypes signatures")
 
         if (expected.constructors.isNotEmpty() || actual.constructors.isNotEmpty()) {
             val expectedConstructors = expected.constructors.associateBy { ConstructorApproximationKey(it) }
@@ -328,7 +334,6 @@ internal class ComparingDeclarationsVisitor(
             // see org.jetbrains.kotlin.resolve.DelegationResolver
         } */
 
-        @Suppress("DEPRECATION")
         context.assertFieldsEqual(expected::isDelegated, actual::isDelegated)
 
         visitAnnotations(
@@ -394,14 +399,68 @@ internal class ComparingDeclarationsVisitor(
         visitAnnotations(expected.annotations, actual.annotations, context.nextLevel("Receiver parameter annotations"))
     }
 
-
     private fun visitAnnotations(expected: Annotations?, actual: Annotations?, context: Context) {
         if (expected === actual || (expected?.isEmpty() != false && actual?.isEmpty() != false)) return
 
-        val expectedAnnotationFqNames: Set<FqName?> = expected?.mapTo(HashSet()) { it.fqName } ?: emptySet()
-        val actualAnnotationFqNames: Set<FqName?> = actual?.mapTo(HashSet()) { it.fqName } ?: emptySet()
+        fun AnnotationDescriptor.getMandatoryFqName(): FqName = fqName ?: context.fail("No FQ name for annotation $this")
 
-        context.assertSetsEqual(expectedAnnotationFqNames, actualAnnotationFqNames, "annotations")
+        val expectedAnnotations: Map<FqName, AnnotationDescriptor> = expected?.associateBy { it.getMandatoryFqName() }.orEmpty()
+        val actualAnnotations: Map<FqName, AnnotationDescriptor> = actual?.associateBy { it.getMandatoryFqName() }.orEmpty()
+
+        context.assertSetsEqual(expectedAnnotations.keys, actualAnnotations.keys, "annotation FQ names")
+
+        for (annotationFqName in expectedAnnotations.keys) {
+            val expectedAnnotation = expectedAnnotations.getValue(annotationFqName)
+            val actualAnnotation = actualAnnotations.getValue(annotationFqName)
+
+            visitAnnotation(expectedAnnotation, actualAnnotation, context.nextLevel("Annotation $annotationFqName"))
+        }
+    }
+
+    private fun visitAnnotation(expected: AnnotationDescriptor, actual: AnnotationDescriptor, context: Context) {
+        visitType(expected.type, actual.type, context.nextLevel("annotation type"))
+
+        val expectedValueArguments: Map<Name, ConstantValue<*>> = expected.allValueArguments
+        val actualValueArguments: Map<Name, ConstantValue<*>> = actual.allValueArguments
+
+        context.assertSetsEqual(expectedValueArguments.keys, actualValueArguments.keys, "annotation value argument names")
+
+        for (name in expectedValueArguments.keys) {
+            val expectedValueArgument = expectedValueArguments.getValue(name)
+            checkConstantSupportedInCommonization(
+                constantValue = expectedValueArgument,
+                constantName = name,
+                owner = expected,
+                allowAnnotationValues = true,
+                onError = { context.fail(it) }
+            )
+
+            val actualValueArgument = actualValueArguments.getValue(name)
+            checkConstantSupportedInCommonization(
+                constantValue = actualValueArgument,
+                constantName = name,
+                owner = actual,
+                allowAnnotationValues = true,
+                onError = { context.fail(it) }
+            )
+
+            context.assertEquals(expectedValueArgument::class, actualValueArgument::class, "annotation value argument value")
+            if (expectedValueArgument is AnnotationValue && actualValueArgument is AnnotationValue) {
+                context.assertEquals(
+                    expectedValueArgument.value.fqName,
+                    actualValueArgument.value.fqName,
+                    "nested annotation FQ name"
+                )
+
+                visitAnnotation(
+                    expectedValueArgument.value,
+                    actualValueArgument.value,
+                    context.nextLevel("Annotation ${expectedValueArgument.value.fqName}")
+                )
+            } else {
+                context.assertEquals(expectedValueArgument.value, actualValueArgument.value, "annotation value argument value")
+            }
+        }
     }
 
     private fun visitType(expected: KotlinType?, actual: KotlinType?, context: Context) {
@@ -409,40 +468,52 @@ internal class ComparingDeclarationsVisitor(
 
         check(actual != null && expected != null)
 
-        visitAnnotations(
-            expected.annotations,
-            actual.annotations,
-            context.nextLevel("Type annotations")
-        )
-
-        val expectedUnwrapped = expected.getAbbreviation() ?: expected.unwrap()
-        val actualUnwrapped = actual.getAbbreviation() ?: actual.unwrap()
+        val expectedUnwrapped = expected.unwrap()
+        val actualUnwrapped = actual.unwrap()
 
         if (expectedUnwrapped === actualUnwrapped) return
 
-        visitAnnotations(
-            expectedUnwrapped.annotations,
-            actualUnwrapped.annotations,
-            context.nextLevel("Unwrapped/unabbreviated type annotations")
-        )
+        val expectedAbbreviated = expectedUnwrapped as? AbbreviatedType
+        val actualAbbreviated = actualUnwrapped as? AbbreviatedType
 
-        val expectedFqName = expectedUnwrapped.fqNameInterned
-        val actualFqName = actualUnwrapped.fqNameInterned
+        context.assertEquals(!expectedAbbreviated.isNull(), !actualAbbreviated.isNull(), "type is abbreviated")
 
-        context.assertEquals(expectedFqName, actualFqName, "type FQN")
+        if (expectedAbbreviated != null && actualAbbreviated != null) {
+            visitType(
+                expectedAbbreviated.abbreviation,
+                actualAbbreviated.abbreviation,
+                context.nextLevel("Abbreviation type")
+            )
+            visitType(
+                extractExpandedType(expectedAbbreviated),
+                extractExpandedType(actualAbbreviated),
+                context.nextLevel("Expanded type")
+            )
+        } else {
+            visitAnnotations(
+                expectedUnwrapped.annotations,
+                actualUnwrapped.annotations,
+                context.nextLevel("Type annotations")
+            )
 
-        val expectedArguments = expectedUnwrapped.arguments
-        val actualArguments = actualUnwrapped.arguments
+            val expectedId = expectedUnwrapped.declarationDescriptor.run { classId?.asString() ?: name.asString() }
+            val actualId = actualUnwrapped.declarationDescriptor.run { classId?.asString() ?: name.asString() }
 
-        context.assertEquals(expectedArguments.size, actualArguments.size, "size of type arguments list")
+            context.assertEquals(expectedId, actualId, "type class ID / name")
 
-        expectedArguments.forEachIndexed { index, expectedArgument ->
-            val actualArgument = actualArguments[index]
+            val expectedArguments = expectedUnwrapped.arguments
+            val actualArguments = actualUnwrapped.arguments
 
-            context.assertFieldsEqual(expectedArgument::isStarProjection, actualArgument::isStarProjection)
-            if (!expectedArgument.isStarProjection) {
-                context.assertFieldsEqual(expectedArgument::getProjectionKind, actualArgument::getProjectionKind)
-                visitType(expectedArgument.type, actualArgument.type, context.nextLevel("Type argument type"))
+            context.assertEquals(expectedArguments.size, actualArguments.size, "size of type arguments list")
+
+            expectedArguments.forEachIndexed { index, expectedArgument ->
+                val actualArgument = actualArguments[index]
+
+                context.assertFieldsEqual(expectedArgument::isStarProjection, actualArgument::isStarProjection)
+                if (!expectedArgument.isStarProjection) {
+                    context.assertFieldsEqual(expectedArgument::getProjectionKind, actualArgument::getProjectionKind)
+                    visitType(expectedArgument.type, actualArgument.type, context.nextLevel("Type argument type"))
+                }
             }
         }
     }
@@ -451,9 +522,8 @@ internal class ComparingDeclarationsVisitor(
         if (expected != actual)
             fail(
                 buildString {
-                    append("Comparing $subject:\n")
-                    append("$expected is not equal to $actual\n")
-                    append(this@assertEquals.toString())
+                    append("Comparing <$subject>:\n")
+                    append("\"$expected\" is not equal to \"$actual\"\n")
                 }
             )
     }
@@ -472,15 +542,25 @@ internal class ComparingDeclarationsVisitor(
         if (expectedMinusActual.isNotEmpty() || actualMinusExpected.isNotEmpty())
             fail(
                 buildString {
-                    append("Comparing $subject:\n")
-                    append("$expected is not equal to $actual\n")
-                    append("Expected size: ${expected.size}\n")
-                    append("Actual size: ${actual.size}\n")
-                    append("Expected minus actual: $expectedMinusActual\n")
-                    append("Actual minus expected: $actualMinusExpected\n")
-                    append(this@assertSetsEqual.toString())
+                    appendLine("Comparing $subject:")
+                    appendLine("$expected is not equal to $actual")
+                    appendLine("Expected size: ${expected.size}")
+                    appendLine("Actual size: ${actual.size}")
+                    appendLine("Expected minus actual: $expectedMinusActual")
+                    appendLine("Actual minus expected: $actualMinusExpected")
                 }
             )
+    }
+
+    private fun Context.fail(message: String): Nothing {
+        kotlin.test.fail(
+            buildString {
+                if (message.isNotEmpty()) {
+                    if (message.last() != '\n') appendLine(message) else append(message)
+                }
+                append(this@fail.toString())
+            }
+        )
     }
 
     override fun visitPackageViewDescriptor(expected: PackageViewDescriptor, context: Context) =

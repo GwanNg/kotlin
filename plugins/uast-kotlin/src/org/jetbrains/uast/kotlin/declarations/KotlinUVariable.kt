@@ -22,6 +22,7 @@ import com.intellij.psi.util.PsiTypesUtil
 import org.jetbrains.annotations.NotNull
 import org.jetbrains.annotations.Nullable
 import org.jetbrains.kotlin.asJava.classes.KtLightClass
+import org.jetbrains.kotlin.asJava.elements.KtLightAbstractAnnotation
 import org.jetbrains.kotlin.asJava.elements.KtLightElement
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget
 import org.jetbrains.kotlin.psi.*
@@ -31,6 +32,7 @@ import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.typeUtil.TypeNullability
 import org.jetbrains.kotlin.types.typeUtil.nullability
 import org.jetbrains.kotlin.utils.SmartList
+import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import org.jetbrains.uast.*
 import org.jetbrains.uast.internal.acceptList
 import org.jetbrains.uast.kotlin.declarations.KotlinUIdentifier
@@ -119,21 +121,25 @@ abstract class AbstractKotlinUVariable(givenParent: UElement?) : KotlinAbstractU
     override fun equals(other: Any?) = other is AbstractKotlinUVariable && psi == other.psi
 
     class WrappedUAnnotation(psiAnnotation: PsiAnnotation, override val uastParent: UElement) : UAnnotation, UAnchorOwner,
-        DelegatedMultiResolve,
-        JvmDeclarationUElementPlaceholder {
+        DelegatedMultiResolve {
 
         override val javaPsi: PsiAnnotation = psiAnnotation
         override val psi: PsiAnnotation = javaPsi
-        override val sourcePsi: PsiElement? = null
+        override val sourcePsi: PsiElement? = psiAnnotation.safeAs<KtLightAbstractAnnotation>()?.kotlinOrigin
 
         override val attributeValues: List<UNamedExpression> by lz {
             psi.parameterList.attributes.map { WrappedUNamedExpression(it, this) }
         }
 
-        override val uastAnchor by lazy { KotlinUIdentifier(javaPsi.nameReferenceElement?.referenceNameElement, null, this) }
+        override val uastAnchor by lazy {
+            KotlinUIdentifier(
+                { javaPsi.nameReferenceElement?.referenceNameElement },
+                sourcePsi.safeAs<KtAnnotationEntry>()?.typeReference?.nameElement,
+                this
+            )
+        }
 
-        class WrappedUNamedExpression(pair: PsiNameValuePair, override val uastParent: UElement?) : UNamedExpression,
-            JvmDeclarationUElementPlaceholder {
+        class WrappedUNamedExpression(pair: PsiNameValuePair, override val uastParent: UElement?) : UNamedExpression {
             override val name: String? = pair.name
             override val psi = pair
             override val javaPsi: PsiElement? = psi
@@ -240,7 +246,7 @@ class KotlinReceiverUParameter(
 }
 
 class KotlinNullabilityUAnnotation(val annotatedElement: PsiElement, override val uastParent: UElement) : UAnnotationEx, UAnchorOwner,
-    DelegatedMultiResolve, JvmDeclarationUElementPlaceholder {
+    DelegatedMultiResolve {
 
     private fun getTargetType(annotatedElement: PsiElement): KotlinType? {
         if (annotatedElement is KtTypeReference) {

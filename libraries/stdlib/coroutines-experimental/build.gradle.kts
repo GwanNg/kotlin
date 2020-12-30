@@ -2,7 +2,6 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     kotlin("jvm")
-    id("jps-compatible")
 }
 
 publish()
@@ -52,23 +51,28 @@ tasks {
                 "-Xopt-in=kotlin.contracts.ExperimentalContracts",
                 "-Xcoroutines=enable",
                 "-XXLanguage:-ReleaseCoroutines",
-                "-Xno-use-ir",
-                "-module-name", "kotlin-coroutines-experimental-compat"
+                "-Xno-use-ir"
             )
+            moduleName = "kotlin-coroutines-experimental-compat"
         }
     }
     val compileTestKotlin by existing(KotlinCompile::class) {
         kotlinOptions {
             languageVersion = "1.2"
             apiVersion = "1.2"
-            freeCompilerArgs = listOf("-Xcoroutines=enable")
+            freeCompilerArgs = listOf(
+                "-Xcoroutines=enable",
+                "-Xno-use-ir"
+            )
         }
     }
     val compileMigrationTestKotlin by existing(KotlinCompile::class) {
         kotlinOptions {
             languageVersion = "1.3"
             apiVersion = "1.3"
-            freeCompilerArgs = listOf()
+            freeCompilerArgs = listOf(
+                "-Xno-use-ir"
+            )
         }
     }
 

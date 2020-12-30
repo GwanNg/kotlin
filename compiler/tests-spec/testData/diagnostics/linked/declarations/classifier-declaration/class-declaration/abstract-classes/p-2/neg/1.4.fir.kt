@@ -2,15 +2,6 @@
 // !DIAGNOSTICS: -UNUSED_VARIABLE -ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE -UNUSED_VALUE -UNUSED_PARAMETER -UNUSED_EXPRESSION
 // SKIP_TXT
 // FULL_JDK
-/*
- * KOTLIN DIAGNOSTICS SPEC TEST (NEGATIVE)
- *
- * SPEC VERSION: 0.1-213
- * PLACE: declarations, classifier-declaration, class-declaration, abstract-classes -> paragraph 2 -> sentence 1
- * NUMBER: 4
- * DESCRIPTION: Abstract classes may contain abstract members, which should be implemented in an inner class that inherits from that abstract type
- */
-
 class MainClass {
     abstract class Base1() {
         abstract val a: CharSequence
@@ -63,9 +54,9 @@ class Case2() {
 * TESTCASE NUMBER: 3
 * NOTE: check abstract member cannot be accessed directly
 */
-class Case3(override val boo: String) : BaseCase3() {
+class Case3(<!REDECLARATION!>override val boo: String<!>) : BaseCase3() {
     override val zoo: String = super.<!ABSTRACT_SUPER_CALL!>foo<!>()
-    override val boo: String = super.<!ABSTRACT_SUPER_CALL!>boo<!>
+    <!REDECLARATION!>override val boo: String = super.<!ABSTRACT_SUPER_CALL!>boo<!><!>
     override val value: String = super.<!ABSTRACT_SUPER_CALL!>zoo<!>
     val hoo: String = super.<!ABSTRACT_SUPER_CALL!>zoo<!>
 

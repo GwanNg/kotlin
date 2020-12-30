@@ -2,15 +2,6 @@
 // !DIAGNOSTICS: -UNUSED_EXPRESSION, -NAME_SHADOWING, -UNUSED_VARIABLE
 // SKIP_TXT
 
-/*
- * KOTLIN DIAGNOSTICS NOT LINKED SPEC TEST (POSITIVE)
- *
- * SECTIONS: dfa
- * NUMBER: 16
- * DESCRIPTION: Raw data flow analysis test
- * HELPERS: objects, properties, classes, functions
- */
-
 // TESTCASE NUMBER: 1
 fun case_1(x: Int?) {
     if (x == null) return
@@ -104,7 +95,7 @@ fun case_7(x: Class?) {
 fun case_8(x: Int?) {
     if (false || false || false || x == nullableNothingProperty) return
     <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Int?")!>x<!>
-    <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Int?")!>x<!>.inv()
+    <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Int?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>inv<!>()
 }
 
 // TESTCASE NUMBER: 9
@@ -343,7 +334,7 @@ fun <T> case_24(x: Inv<out T?>?, y: Nothing?) {
 fun case_25(x: Int?) {
     val x = (l@ {
         if (x == null) return@l
-        <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Int & kotlin.Int")!>x<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Int & kotlin.Int?")!>x<!>
         <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Int & kotlin.Int?")!>x<!>.inv()
     })()
 }
@@ -669,7 +660,7 @@ fun case_44(x: Inv<out Inv<out Inv<out Inv<out Inv<out Inv<out Inv<out Number>>>
 fun <T> case_45(x: T) {
     val y = (l@ {
         if (x == null) return@l
-        <!DEBUG_INFO_EXPRESSION_TYPE("T!! & T!!")!>x<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("T!! & T")!>x<!>
         <!DEBUG_INFO_EXPRESSION_TYPE("T!! & T")!>x<!>.equals(null)
         <!DEBUG_INFO_EXPRESSION_TYPE("T!! & T")!>x<!>.propT
         <!DEBUG_INFO_EXPRESSION_TYPE("T!! & T")!>x<!>.propAny
@@ -686,7 +677,7 @@ fun <T> case_45(x: T) {
 fun <T> case_46(x: T?) {
     (l@ {
         if (x === null) return@l
-        <!DEBUG_INFO_EXPRESSION_TYPE("T?!! & T?!!")!>x<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("T?!! & T?")!>x<!>
         <!DEBUG_INFO_EXPRESSION_TYPE("T?!! & T?")!>x<!>.equals(null)
         <!DEBUG_INFO_EXPRESSION_TYPE("T?!! & T?")!>x<!>.propT
         <!DEBUG_INFO_EXPRESSION_TYPE("T?!! & T?")!>x<!>.propAny

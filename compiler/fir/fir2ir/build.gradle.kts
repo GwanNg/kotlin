@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.ideaExt.idea
+
 plugins {
     kotlin("jvm")
     id("jps-compatible")
@@ -5,37 +7,50 @@ plugins {
 
 dependencies {
     compileOnly(project(":core:descriptors"))
+    compileOnly(project(":core:descriptors.jvm"))
     compileOnly(project(":compiler:fir:cones"))
     compileOnly(project(":compiler:fir:resolve"))
     compileOnly(project(":compiler:fir:tree"))
     compileOnly(project(":compiler:ir.tree"))
     compileOnly(project(":compiler:ir.psi2ir"))
+    compileOnly(project(":compiler:ir.backend.common"))
 
     compileOnly(intellijCoreDep()) { includeJars("intellij-core") }
 
     testCompileOnly(intellijDep())
 
-    testRuntime(intellijDep())
+    testRuntimeOnly(intellijDep())
 
-    testCompile(commonDep("junit:junit"))
+    testApi(commonDep("junit:junit"))
     testCompileOnly(project(":kotlin-test:kotlin-test-jvm"))
     testCompileOnly(project(":kotlin-test:kotlin-test-junit"))
-    testCompile(projectTests(":compiler:tests-common"))
-    testCompile(projectTests(":compiler:fir:analysis-tests"))
+    testApi(projectTests(":compiler:tests-common"))
+    testApi(projectTests(":compiler:fir:analysis-tests:legacy-fir-tests"))
+    testApi(project(":compiler:resolution.common"))
 
     testCompileOnly(project(":kotlin-reflect-api"))
-    testRuntime(project(":kotlin-reflect"))
-    testRuntime(project(":core:descriptors.runtime"))
+    testRuntimeOnly(project(":kotlin-reflect"))
+    testRuntimeOnly(project(":core:descriptors.runtime"))
 
-    Platform[192].orHigher {
-        testCompileOnly(intellijCoreDep()) { includeJars("intellij-core") }
-        testRuntimeOnly(intellijCoreDep()) { includeJars("intellij-core") }
-    }
+    testCompileOnly(intellijCoreDep()) { includeJars("intellij-core") }
+    testRuntimeOnly(intellijCoreDep()) { includeJars("intellij-core") }
 }
+
+val generationRoot = projectDir.resolve("tests-gen")
 
 sourceSets {
     "main" { projectDefault() }
-    "test" { projectDefault() }
+    "test" {
+        projectDefault()
+        this.java.srcDir(generationRoot.name)
+    }
+}
+
+if (kotlinBuildProperties.isInJpsBuildIdeaSync) {
+    apply(plugin = "idea")
+    idea {
+        this.module.generatedSourceDirs.add(generationRoot)
+    }
 }
 
 projectTest(parallel = true) {

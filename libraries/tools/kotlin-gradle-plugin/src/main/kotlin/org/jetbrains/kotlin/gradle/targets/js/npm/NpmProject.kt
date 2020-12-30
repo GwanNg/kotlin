@@ -24,7 +24,7 @@ val KotlinJsCompilation.npmProject: NpmProject
  *
  * More info can be obtained from [KotlinCompilationNpmResolution], which is available after project resolution (after [KotlinNpmInstallTask] execution).
  */
-open class NpmProject(val compilation: KotlinJsCompilation) {
+open class NpmProject(@Transient val compilation: KotlinJsCompilation) {
     val name: String
         get() = buildNpmProjectName()
 
@@ -46,6 +46,9 @@ open class NpmProject(val compilation: KotlinJsCompilation) {
     val packageJsonFile: File
         get() = dir.resolve(PACKAGE_JSON)
 
+    val prePackageJsonFile: File
+        get() = dir.resolve(PRE_PACKAGE_JSON)
+
     val packageJsonTaskName: String
         get() = compilation.disambiguateName("packageJson")
 
@@ -64,12 +67,6 @@ open class NpmProject(val compilation: KotlinJsCompilation) {
     val externalsDir: File
         get() = externalsDirRoot.resolve("src")
 
-    val publicPackageJson: File
-        get() = project.buildDir
-            .resolve("tmp")
-            .resolve(publicPackageJsonTaskName)
-            .resolve(PACKAGE_JSON)
-
     val publicPackageJsonTaskName: String
         get() = compilation.disambiguateName(PublicPackageJsonTask.NAME)
 
@@ -78,10 +75,15 @@ open class NpmProject(val compilation: KotlinJsCompilation) {
     private val rootNodeModules: NpmProjectModules?
         get() = NpmProjectModules(nodeJs.rootPackageDir)
 
-    fun useTool(exec: ExecSpec, tool: String, vararg args: String) {
+    fun useTool(
+        exec: ExecSpec,
+        tool: String,
+        nodeArgs: List<String> = listOf(),
+        args: List<String>
+    ) {
         exec.workingDir = dir
         exec.executable = nodeJs.requireConfigured().nodeExecutable
-        exec.args = listOf(require(tool)) + args
+        exec.args = nodeArgs + require(tool) + args
     }
 
     /**
@@ -125,6 +127,12 @@ open class NpmProject(val compilation: KotlinJsCompilation) {
 
         val targetName = if (target.name.isNotEmpty() && target.name.toLowerCase() != "js") {
             target.name
+                .replace(DECAMELIZE_REGEX) {
+                    it.groupValues
+                        .drop(1)
+                        .joinToString(prefix = "-", separator = "-")
+                }
+                .toLowerCase()
         } else null
 
         return sequenceOf(
@@ -141,7 +149,10 @@ open class NpmProject(val compilation: KotlinJsCompilation) {
 
     companion object {
         const val PACKAGE_JSON = "package.json"
+        const val PRE_PACKAGE_JSON = "pre-package.json"
         const val NODE_MODULES = "node_modules"
         const val DIST_FOLDER = "kotlin"
+
+        private val DECAMELIZE_REGEX = "([A-Z])".toRegex()
     }
 }

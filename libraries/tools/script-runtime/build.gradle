@@ -26,17 +26,18 @@ jar {
 }
 
 artifacts {
-    archives sourcesJar
-    sources sourcesJar
     mainJar jar
 }
 
-javadocJar()
+configureSourcesJar()
+configureJavadocJar()
 
 compileKotlin {
     kotlinOptions.freeCompilerArgs = [
             "-Xallow-kotlin-package",
             "-Xnormalize-constructor-calls=enable",
-            "-module-name", project.name
     ]
+    kotlinOptions.moduleName = project.name
 }
+
+configureJvmIrBackend(project)

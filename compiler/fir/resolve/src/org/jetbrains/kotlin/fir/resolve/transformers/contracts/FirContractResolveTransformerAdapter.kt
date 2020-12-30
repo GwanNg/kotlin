@@ -10,28 +10,31 @@ import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirClass
 import org.jetbrains.kotlin.fir.declarations.FirDeclaration
 import org.jetbrains.kotlin.fir.declarations.FirFile
-import org.jetbrains.kotlin.fir.resolve.BodyResolveComponents
 import org.jetbrains.kotlin.fir.resolve.ResolutionMode
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
-import org.jetbrains.kotlin.fir.resolve.transformers.AdapterForResolvePhase
+import org.jetbrains.kotlin.fir.resolve.transformers.AdapterForResolveProcessor
+import org.jetbrains.kotlin.fir.resolve.transformers.FirTransformerBasedResolveProcessor
 import org.jetbrains.kotlin.fir.resolve.transformers.ReturnTypeCalculatorForFullBodyResolve
+import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.BodyResolveContext
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.FirAbstractBodyResolveTransformer
 import org.jetbrains.kotlin.fir.visitors.CompositeTransformResult
 import org.jetbrains.kotlin.fir.visitors.FirTransformer
 import org.jetbrains.kotlin.fir.visitors.compose
 import org.jetbrains.kotlin.fir.visitors.transformSingle
 
-@AdapterForResolvePhase
-class FirContractResolveTransformerAdapter(private val scopeSession: ScopeSession) : FirTransformer<Nothing?>() {
+@OptIn(AdapterForResolveProcessor::class)
+class FirContractResolveProcessor(session: FirSession, scopeSession: ScopeSession) : FirTransformerBasedResolveProcessor(session, scopeSession) {
+    override val transformer = FirContractResolveTransformerAdapter(session, scopeSession)
+}
+
+@AdapterForResolveProcessor
+class FirContractResolveTransformerAdapter(session: FirSession, scopeSession: ScopeSession) : FirTransformer<Nothing?>() {
+    private val transformer = FirContractResolveTransformer(session, scopeSession)
     override fun <E : FirElement> transformElement(element: E, data: Nothing?): CompositeTransformResult<E> {
         return element.compose()
     }
 
     override fun transformFile(file: FirFile, data: Nothing?): CompositeTransformResult<FirDeclaration> {
-        val transformer = FirContractResolveTransformer(
-            file.session,
-            scopeSession
-        )
         return file.transform(transformer, ResolutionMode.ContextIndependent)
     }
 }
@@ -39,7 +42,7 @@ class FirContractResolveTransformerAdapter(private val scopeSession: ScopeSessio
 fun <F : FirClass<F>> F.runContractResolveForLocalClass(
     session: FirSession,
     scopeSession: ScopeSession,
-    outerBodyResolveContext: FirAbstractBodyResolveTransformer.BodyResolveContext,
+    outerBodyResolveContext: BodyResolveContext,
     targetedClasses: Set<FirClass<*>>
 ): F {
     val newContext = outerBodyResolveContext.createSnapshotForLocalClasses(

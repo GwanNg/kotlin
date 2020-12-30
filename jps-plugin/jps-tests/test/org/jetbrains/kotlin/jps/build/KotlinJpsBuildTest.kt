@@ -58,7 +58,6 @@ import org.jetbrains.kotlin.codegen.AsmUtil
 import org.jetbrains.kotlin.codegen.JvmCodegenUtil
 import org.jetbrains.kotlin.config.IncrementalCompilation
 import org.jetbrains.kotlin.config.KotlinCompilerVersion.TEST_IS_PRE_RELEASE_SYSTEM_PROPERTY
-import org.jetbrains.kotlin.config.LanguageVersion
 import org.jetbrains.kotlin.incremental.components.LookupTracker
 import org.jetbrains.kotlin.incremental.withIC
 import org.jetbrains.kotlin.jps.build.KotlinJpsBuildTestBase.LibraryDependency.*
@@ -69,7 +68,8 @@ import org.jetbrains.kotlin.jps.targets.KotlinModuleBuildTarget
 import org.jetbrains.kotlin.load.kotlin.PackagePartClassUtils
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.test.KotlinTestUtils
-import org.jetbrains.kotlin.test.MockLibraryUtil
+import org.jetbrains.kotlin.test.MockLibraryUtilExt
+import org.jetbrains.kotlin.test.util.KtTestUtil
 import org.jetbrains.kotlin.utils.PathUtil
 import org.jetbrains.kotlin.utils.Printer
 import org.jetbrains.org.objectweb.asm.ClassReader
@@ -464,6 +464,29 @@ open class KotlinJpsBuildTest : KotlinJpsBuildTestBase() {
         buildAllModules().assertSuccessful()
     }
 
+    fun testPureJavaProject() {
+        initProject(JVM_FULL_RUNTIME)
+
+        fun build() {
+            var someFilesCompiled = false
+
+            buildCustom(CanceledStatus.NULL, TestProjectBuilderLogger(), BuildResult()) {
+                project.setTestingContext(TestingContext(LookupTracker.DO_NOTHING, object : TestingBuildLogger {
+                    override fun compilingFiles(files: Collection<File>, allRemovedFilesFiles: Collection<File>) {
+                        someFilesCompiled = true
+                    }
+                }))
+            }
+
+            assertFalse("Kotlin builder should return early if there are no Kotlin files", someFilesCompiled)
+        }
+
+        build()
+
+        rename("${workDir}/src/Test.java", "Test1.java")
+        build()
+    }
+
     fun testKotlinJavaProject() {
         doTestWithRuntime()
     }
@@ -591,7 +614,7 @@ open class KotlinJpsBuildTest : KotlinJpsBuildTestBase() {
     fun testCircularDependencyWithReferenceToOldVersionLib() {
         initProject(JVM_MOCK_RUNTIME)
 
-        val libraryJar = MockLibraryUtil.compileJvmLibraryToJar(workDir.absolutePath + File.separator + "oldModuleLib/src", "module-lib")
+        val libraryJar = MockLibraryUtilExt.compileJvmLibraryToJar(workDir.absolutePath + File.separator + "oldModuleLib/src", "module-lib")
 
         AbstractKotlinJpsBuildTestCase.addDependency(JpsJavaDependencyScope.COMPILE, Lists.newArrayList(findModule("module1"), findModule("module2")), false, "module-lib", libraryJar)
 
@@ -602,7 +625,7 @@ open class KotlinJpsBuildTest : KotlinJpsBuildTestBase() {
     fun testDependencyToOldKotlinLib() {
         initProject()
 
-        val libraryJar = MockLibraryUtil.compileJvmLibraryToJar(workDir.absolutePath + File.separator + "oldModuleLib/src", "module-lib")
+        val libraryJar = MockLibraryUtilExt.compileJvmLibraryToJar(workDir.absolutePath + File.separator + "oldModuleLib/src", "module-lib")
 
         AbstractKotlinJpsBuildTestCase.addDependency(JpsJavaDependencyScope.COMPILE, Lists.newArrayList(findModule("module")), false, "module-lib", libraryJar)
 
@@ -624,40 +647,6 @@ open class KotlinJpsBuildTest : KotlinJpsBuildTestBase() {
         initProject(JVM_MOCK_RUNTIME)
         val result = buildAllModules()
         result.assertSuccessful()
-    }
-
-    /*
-     * Here we're checking that enabling inference in IDE doesn't affect compilation via JPS
-     *
-     * the following two tests are connected:
-     * - testKotlinProjectWithEnabledNewInferenceInIDE checks that project is compiled when new inference is enabled only in IDE
-     *   - this is done via project component
-     * - testKotlinProjectWithErrorsBecauseOfNewInference checks that project isn't compiled when new inference is enabled in the compiler
-     *
-     * So, if the former will fail => option affects JPS compilation, it's bad. Also, if the latter test fails => test is useless as it's
-     * compiled with new and old inference.
-     *
-     */
-    fun testKotlinProjectWithEnabledNewInferenceInIDE() {
-        initProject(JVM_MOCK_RUNTIME)
-        val module = myProject.modules.single()
-        val args = module.kotlinCompilerArguments
-        args.languageVersion = LanguageVersion.KOTLIN_1_3.versionString
-        myProject.kotlinCommonCompilerArguments = args
-
-        buildAllModules().assertSuccessful()
-    }
-
-    fun testKotlinProjectWithErrorsBecauseOfNewInference() {
-        initProject(JVM_MOCK_RUNTIME)
-        val module = myProject.modules.single()
-        val args = module.kotlinCompilerArguments
-        args.newInference = true
-        myProject.kotlinCommonCompilerArguments = args
-
-        val result = buildAllModules()
-        result.assertFailed()
-        result.checkErrors()
     }
 
     private fun createKotlinJavaScriptLibraryArchive() {
@@ -728,12 +717,12 @@ open class KotlinJpsBuildTest : KotlinJpsBuildTestBase() {
 
             for (i in 0..classCount) {
                 val code = buildString {
-                    appendln("package foo")
-                    appendln("class Foo$i {")
+                    appendLine("package foo")
+                    appendLine("class Foo$i {")
                     for (j in 0..methodCount) {
-                        appendln("  fun get${j*j}(): Int = square($j)")
+                        appendLine("  fun get${j*j}(): Int = square($j)")
                     }
-                    appendln("}")
+                    appendLine("}")
 
                 }
                 File(srcDir, "Foo$i.kt").writeText(code)
@@ -974,7 +963,7 @@ open class KotlinJpsBuildTest : KotlinJpsBuildTestBase() {
     }
 
     fun testJre9() {
-        val jdk9Path = KotlinTestUtils.getJdk9Home().absolutePath
+        val jdk9Path = KtTestUtil.getJdk9Home().absolutePath
 
         val jdk = myModel.global.addSdk(JDK_NAME, jdk9Path, "9", JpsJavaSdkType.INSTANCE)
         jdk.addRoot(StandardFileSystems.JRT_PROTOCOL_PREFIX + jdk9Path + URLUtil.JAR_SEPARATOR + "java.base", JpsOrderRootType.COMPILED)
@@ -1021,7 +1010,7 @@ open class KotlinJpsBuildTest : KotlinJpsBuildTestBase() {
         descriptor.setupProject()
 
         try {
-            val builder = IncProjectBuilder(descriptor, BuilderRegistry.getInstance(), this.myBuildParams, canceledStatus, null, true)
+            val builder = IncProjectBuilder(descriptor, BuilderRegistry.getInstance(), this.myBuildParams, canceledStatus, true)
             builder.addMessageHandler(buildResult)
             builder.build(scopeBuilder.build(), false)
         }

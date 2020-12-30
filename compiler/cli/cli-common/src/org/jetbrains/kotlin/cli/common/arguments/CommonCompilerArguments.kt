@@ -89,9 +89,12 @@ abstract class CommonCompilerArguments : CommonToolArguments() {
 
     @Argument(
         value = "-Xskip-metadata-version-check",
-        description = "Load classes with bad metadata version anyway (incl. pre-release classes)"
+        description = "Allow to load classes with bad metadata version and pre-release classes"
     )
     var skipMetadataVersionCheck: Boolean by FreezableVar(false)
+
+    @Argument(value = "-Xskip-prerelease-check", description = "Allow to load pre-release classes")
+    var skipPrereleaseCheck: Boolean by FreezableVar(false)
 
     @Argument(
         value = "-Xallow-kotlin-package",
@@ -315,6 +318,18 @@ abstract class CommonCompilerArguments : CommonToolArguments() {
     var useFir: Boolean by FreezableVar(false)
 
     @Argument(
+        value = "-Xuse-fir-extended-checkers",
+        description = "Use extended analysis mode based on Front-end IR. Warning: this feature is far from being production-ready"
+    )
+    var useFirExtendedCheckers: Boolean by FreezableVar(false)
+
+    @Argument(
+        value = "-Xdisable-ultra-light-classes",
+        description = "Do not use the ultra light classes implementation"
+    )
+    var disableUltraLightClasses: Boolean by FreezableVar(false)
+
+    @Argument(
         value = "-Xuse-mixed-named-arguments",
         description = "Enable Support named arguments in their own position even if the result appears as mixed"
     )
@@ -337,9 +352,16 @@ abstract class CommonCompilerArguments : CommonToolArguments() {
     )
     var explicitApi: String by FreezableVar(ExplicitApiMode.DISABLED.state)
 
+    @Argument(
+        value = "-Xinference-compatibility",
+        description = "Enable compatibility changes for generic type inference algorithm"
+    )
+    var inferenceCompatibility: Boolean by FreezableVar(false)
+
     open fun configureAnalysisFlags(collector: MessageCollector): MutableMap<AnalysisFlag<*>, Any> {
         return HashMap<AnalysisFlag<*>, Any>().apply {
             put(AnalysisFlags.skipMetadataVersionCheck, skipMetadataVersionCheck)
+            put(AnalysisFlags.skipPrereleaseCheck, skipPrereleaseCheck || skipMetadataVersionCheck)
             put(AnalysisFlags.multiPlatformDoNotCheckActual, noCheckActual)
             val experimentalFqNames = experimental?.toList().orEmpty()
             if (experimentalFqNames.isNotEmpty()) {
@@ -378,6 +400,7 @@ abstract class CommonCompilerArguments : CommonToolArguments() {
                 put(LanguageFeature.NewInference, LanguageFeature.State.ENABLED)
                 put(LanguageFeature.SamConversionPerArgument, LanguageFeature.State.ENABLED)
                 put(LanguageFeature.FunctionReferenceWithDefaultValueAsOtherType, LanguageFeature.State.ENABLED)
+                put(LanguageFeature.DisableCompatibilityModeForNewInference, LanguageFeature.State.ENABLED)
             }
 
             if (inlineClasses) {
@@ -407,6 +430,10 @@ abstract class CommonCompilerArguments : CommonToolArguments() {
 
             if (useMixedNamedArguments) {
                 put(LanguageFeature.MixedNamedArgumentsInTheirOwnPosition, LanguageFeature.State.ENABLED)
+            }
+
+            if (inferenceCompatibility) {
+                put(LanguageFeature.InferenceCompatibility, LanguageFeature.State.ENABLED)
             }
 
             if (progressiveMode) {
@@ -457,6 +484,8 @@ abstract class CommonCompilerArguments : CommonToolArguments() {
 
             if (!functionReferenceWithDefaultValueFeaturePassedExplicitly)
                 put(LanguageFeature.FunctionReferenceWithDefaultValueAsOtherType, LanguageFeature.State.ENABLED)
+
+            put(LanguageFeature.DisableCompatibilityModeForNewInference, LanguageFeature.State.ENABLED)
         }
 
         if (featuresThatForcePreReleaseBinaries.isNotEmpty()) {

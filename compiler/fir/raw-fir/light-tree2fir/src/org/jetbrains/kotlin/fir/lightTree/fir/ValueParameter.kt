@@ -5,14 +5,15 @@
 
 package org.jetbrains.kotlin.fir.lightTree.fir
 
-import org.jetbrains.kotlin.fir.FirSession
-import org.jetbrains.kotlin.fir.builder.convertToArrayType
+import org.jetbrains.kotlin.fir.*
+import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
 import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirValueParameter
 import org.jetbrains.kotlin.fir.declarations.builder.buildProperty
 import org.jetbrains.kotlin.fir.declarations.impl.FirDeclarationStatusImpl
 import org.jetbrains.kotlin.fir.declarations.impl.FirDefaultPropertyGetter
 import org.jetbrains.kotlin.fir.declarations.impl.FirDefaultPropertySetter
+import org.jetbrains.kotlin.fir.declarations.isFromVararg
 import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
 import org.jetbrains.kotlin.fir.diagnostics.ConeSimpleDiagnostic
 import org.jetbrains.kotlin.fir.expressions.builder.buildQualifiedAccessExpression
@@ -34,24 +35,27 @@ class ValueParameter(
         return isVal || isVar
     }
 
-    fun toFirProperty(session: FirSession, callableId: CallableId): FirProperty {
+    fun toFirProperty(session: FirSession, callableId: CallableId, isExpect: Boolean): FirProperty {
         val name = this.firValueParameter.name
         var type = this.firValueParameter.returnTypeRef
-        if (this.firValueParameter.isVararg) {
-            type = type.convertToArrayType()
-        }
         if (type is FirImplicitTypeRef) {
             type = buildErrorTypeRef { diagnostic = ConeSimpleDiagnostic("Incomplete code", DiagnosticKind.Syntax) }
         }
 
         return buildProperty {
-            source = firValueParameter.source
+            val parameterSource = firValueParameter.source as? FirLightSourceElement
+            val parameterNode = parameterSource?.lighterASTNode
+            source = parameterNode?.toFirLightSourceElement(
+                parameterSource.treeStructure, FirFakeSourceElementKind.PropertyFromParameter
+            )
             this.session = session
-            returnTypeRef = type
+            origin = FirDeclarationOrigin.Source
+            returnTypeRef = type.copyWithNewSourceKind(FirFakeSourceElementKind.PropertyFromParameter)
             this.name = name
             initializer = buildQualifiedAccessExpression {
+                source = firValueParameter.source
                 calleeReference = buildPropertyFromParameterResolvedNamedReference {
-                    this.name =  name
+                    this.name = name
                     resolvedSymbol = this@ValueParameter.firValueParameter.symbol
                 }
             }
@@ -59,15 +63,29 @@ class ValueParameter(
             symbol = FirPropertySymbol(callableId)
             isLocal = false
             status = FirDeclarationStatusImpl(modifiers.getVisibility(), modifiers.getModality()).apply {
-                isExpect = modifiers.hasExpect()
+                this.isExpect = isExpect
                 isActual = modifiers.hasActual()
                 isOverride = modifiers.hasOverride()
                 isConst = false
                 isLateInit = false
             }
             annotations += this@ValueParameter.firValueParameter.annotations
-            getter = FirDefaultPropertyGetter(null, session, type, modifiers.getVisibility())
-            setter = if (this.isVar) FirDefaultPropertySetter(null, session, type, modifiers.getVisibility()) else null
+            getter = FirDefaultPropertyGetter(
+                null,
+                session,
+                FirDeclarationOrigin.Source,
+                type.copyWithNewSourceKind(FirFakeSourceElementKind.DefaultAccessor),
+                modifiers.getVisibility()
+            )
+            setter = if (this.isVar) FirDefaultPropertySetter(
+                null,
+                session,
+                FirDeclarationOrigin.Source,
+                type.copyWithNewSourceKind(FirFakeSourceElementKind.DefaultAccessor),
+                modifiers.getVisibility()
+            ) else null
+        }.apply {
+            this.isFromVararg = firValueParameter.isVararg
         }
     }
 }

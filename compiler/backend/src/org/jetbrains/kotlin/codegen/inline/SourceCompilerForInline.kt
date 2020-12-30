@@ -46,7 +46,7 @@ interface SourceCompilerForInline {
 
     val inlineCallSiteInfo: InlineCallSiteInfo
 
-    val lazySourceMapper: DefaultSourceMapper
+    val lazySourceMapper: SourceMapper
 
     fun generateLambdaBody(lambdaInfo: ExpressionLambda): SMAPAndMethodNode
 
@@ -136,7 +136,7 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
         val jvmMethodSignature = state.typeMapper.mapSignatureSkipGeneric(invokeMethodDescriptor)
         val asmMethod = jvmMethodSignature.asmMethod
         val methodNode = MethodNode(
-            Opcodes.API_VERSION, AsmUtil.getMethodAsmFlags(invokeMethodDescriptor, OwnerKind.IMPLEMENTATION, state),
+            Opcodes.API_VERSION, DescriptorAsmUtil.getMethodAsmFlags(invokeMethodDescriptor, OwnerKind.IMPLEMENTATION, state),
             asmMethod.name, asmMethod.descriptor, null, null
         )
         val adapter = wrapWithMaxLocalCalc(methodNode)
@@ -212,18 +212,7 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
             codegen.propagateChildReifiedTypeParametersUsages(parentCodegen.reifiedTypeParametersUsages)
         }
 
-        return createSMAPWithDefaultMapping(expression, parentCodegen.orCreateSourceMapper.resultMappings)
-    }
-
-
-    private fun createSMAPWithDefaultMapping(
-        declaration: KtExpression,
-        mappings: List<FileMapping>
-    ): SMAP {
-        val containingFile = declaration.containingFile
-        CodegenUtil.getLineNumberForElement(containingFile, true) ?: error("Couldn't extract line count in $containingFile")
-
-        return SMAP(mappings)
+        return SMAP(parentCodegen.orCreateSourceMapper.resultMappings)
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -285,7 +274,7 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
 
         val node = MethodNode(
             Opcodes.API_VERSION,
-            AsmUtil.getMethodAsmFlags(callableDescriptor, context.contextKind, state) or if (callDefault) Opcodes.ACC_STATIC else 0,
+            DescriptorAsmUtil.getMethodAsmFlags(callableDescriptor, context.contextKind, state) or if (callDefault) Opcodes.ACC_STATIC else 0,
             asmMethod.name,
             asmMethod.descriptor, null, null
         )
@@ -310,7 +299,7 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
                 methodContext, callableDescriptor, maxCalcAdapter, DefaultParameterValueLoader.DEFAULT,
                 inliningFunction as KtNamedFunction?, parentCodegen, asmMethod
             )
-            createSMAPWithDefaultMapping(inliningFunction, parentCodegen.orCreateSourceMapper.resultMappings)
+            SMAP(parentCodegen.orCreateSourceMapper.resultMappings)
         } else {
             generateMethodBody(maxCalcAdapter, callableDescriptor, methodContext, inliningFunction!!, jvmSignature, null)
         }

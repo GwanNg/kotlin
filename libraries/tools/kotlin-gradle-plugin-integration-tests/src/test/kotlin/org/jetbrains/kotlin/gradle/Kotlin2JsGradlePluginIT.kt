@@ -5,22 +5,29 @@
 
 package org.jetbrains.kotlin.gradle
 
+import com.google.gson.Gson
 import org.gradle.api.logging.LogLevel
+import org.gradle.api.logging.configuration.WarningMode
 import org.jetbrains.kotlin.gradle.plugin.KotlinJsCompilerType
-import org.jetbrains.kotlin.gradle.targets.js.npm.NpmProject
-import org.jetbrains.kotlin.gradle.targets.js.npm.NpmProjectModules
-import org.jetbrains.kotlin.gradle.targets.js.npm.fromSrcPackageJson
+import org.jetbrains.kotlin.gradle.targets.js.ir.KLIB_TYPE
+import org.jetbrains.kotlin.gradle.targets.js.npm.*
 import org.jetbrains.kotlin.gradle.tasks.USING_JS_INCREMENTAL_COMPILATION_MESSAGE
 import org.jetbrains.kotlin.gradle.tasks.USING_JS_IR_BACKEND_MESSAGE
 import org.jetbrains.kotlin.gradle.util.*
 import org.junit.Assume.assumeFalse
 import org.junit.Test
 import java.io.File
+import java.io.FileFilter
 import java.util.zip.ZipFile
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class Kotlin2JsIrGradlePluginIT : AbstractKotlin2JsGradlePluginIT(true) {
+
+    override fun defaultBuildOptions(): BuildOptions {
+        return super.defaultBuildOptions().copy(warningMode = WarningMode.Summary)
+    }
+
     @Test
     fun generateDts() {
         val project = Project("kotlin2JsIrDtsGeneration")
@@ -37,7 +44,7 @@ class Kotlin2JsIrGradlePluginIT : AbstractKotlin2JsGradlePluginIT(true) {
 
     @Test
     fun testCleanOutputWithEmptySources() {
-        with(Project("kotlin-js-nodejs-project", GradleVersionRequired.AtLeast("5.3"))) {
+        with(Project("kotlin-js-nodejs-project")) {
             setupWorkingDir()
             gradleBuildScript().modify(::transformBuildScriptWithPluginsDsl)
             gradleSettingsScript().modify(::transformBuildScriptWithPluginsDsl)
@@ -58,7 +65,7 @@ class Kotlin2JsIrGradlePluginIT : AbstractKotlin2JsGradlePluginIT(true) {
             gradleBuildScript().appendText(
                 """${"\n"}
                 tasks.named("compileProductionExecutableKotlinJs").configure {
-                    type = org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsBinaryType.DEVELOPMENT
+                    mode = org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsBinaryMode.DEVELOPMENT
                 }
             """.trimIndent()
             )
@@ -115,6 +122,11 @@ class Kotlin2JsIrGradlePluginIT : AbstractKotlin2JsGradlePluginIT(true) {
 }
 
 class Kotlin2JsGradlePluginIT : AbstractKotlin2JsGradlePluginIT(false) {
+
+    override fun defaultBuildOptions(): BuildOptions {
+        return super.defaultBuildOptions().copy(warningMode = WarningMode.Summary)
+    }
+
     @Test
     fun testKotlinJsBuiltins() {
         val project = Project("kotlinBuiltins")
@@ -212,64 +224,51 @@ class Kotlin2JsGradlePluginIT : AbstractKotlin2JsGradlePluginIT(false) {
             assertTrue(fileInWorkingDir("$pathPrefix/kotlin.js").length() < 500 * 1000, "Looks like kotlin.js file was not minified by DCE")
         }
     }
+
+    @Test
+    fun testKotlinJsDependencyWithJsFiles() = with(Project("kotlin-js-dependency-with-js-files")) {
+        setupWorkingDir()
+        gradleBuildScript().modify(::transformBuildScriptWithPluginsDsl)
+
+        build(
+            "packageJson"
+        ) {
+            assertSuccessful()
+
+            val dependency = "2p-parser-core"
+            val version = "0.11.1"
+
+            assertFileExists("build/js/packages_imported/$dependency/$version")
+
+            fun getPackageJson(dependency: String, version: String) =
+                fileInWorkingDir("build/js/packages_imported/$dependency/$version")
+                    .resolve(NpmProject.PACKAGE_JSON)
+                    .let {
+                        Gson().fromJson(it.readText(), PackageJson::class.java)
+                    }
+
+
+            val packageJson = getPackageJson(dependency, version)
+
+            assertEquals(dependency, packageJson.name)
+            assertEquals(version, packageJson.version)
+            assertEquals("$dependency.js", packageJson.main)
+        }
+    }
 }
 
 abstract class AbstractKotlin2JsGradlePluginIT(private val irBackend: Boolean) : BaseGradleIT() {
     override fun defaultBuildOptions(): BuildOptions =
-        super.defaultBuildOptions().copy(jsIrBackend = irBackend)
+        super.defaultBuildOptions().copy(
+            jsIrBackend = irBackend,
+            jsCompilerType = if (irBackend) KotlinJsCompilerType.IR else KotlinJsCompilerType.LEGACY
+        )
 
     protected fun CompiledProject.checkIrCompilationMessage() {
         if (irBackend) {
             assertContains(USING_JS_IR_BACKEND_MESSAGE)
         } else {
             assertNotContains(USING_JS_IR_BACKEND_MESSAGE)
-        }
-    }
-
-    @Test
-    fun testBuildAndClean() {
-        val project = Project("kotlin2JsProject")
-
-        project.build("build") {
-            assertSuccessful()
-            assertReportExists()
-            checkIrCompilationMessage()
-
-            assertTasksExecuted(
-                ":libraryProject:jarSources",
-                ":mainProject:compileKotlin2Js",
-                ":libraryProject:compileKotlin2Js"
-            )
-
-            assertFileExists("mainProject/web/js/app.js")
-            if (!irBackend) {
-                assertFileExists("mainProject/web/js/lib/kotlin.js")
-                assertFileExists("libraryProject/build/kotlin2js/main/test-library.js")
-                assertFileExists("mainProject/web/js/app.js.map")
-            }
-        }
-
-        project.build("build") {
-            assertSuccessful()
-            assertTasksUpToDate(":mainProject:compileKotlin2Js")
-            assertContainsRegex(":libraryProject:compileTestKotlin2Js (UP-TO-DATE|NO-SOURCE)".toRegex())
-        }
-
-        project.build("clean") {
-            assertSuccessful()
-            assertReportExists()
-
-            // Test that we don't accidentally remove the containing directory
-            // This would fail if we used the default clean task of the copy task
-            assertFileExists("mainProject/web/js/lib")
-
-            assertNoSuchFile("main/project/web/js/app.js.map")
-            assertNoSuchFile("main/project/web/js/example/main.kt")
-        }
-
-        project.build("clean") {
-            assertSuccessful()
-            assertReportExists()
         }
     }
 
@@ -446,17 +445,6 @@ abstract class AbstractKotlin2JsGradlePluginIT(private val irBackend: Boolean) :
         }
     }
 
-    /** Issue: KT-18495 */
-    @Test
-    fun testNoSeparateClassesDirWarning() {
-        val project = Project("kotlin2JsProject")
-        project.build("build") {
-            assertSuccessful()
-            checkIrCompilationMessage()
-            assertNotContains("this build assumes a single directory for all classes from a source set")
-        }
-    }
-
     @Test
     fun testIncrementalCompilation() = Project("kotlin2JsICProject").run {
         setupWorkingDir()
@@ -512,7 +500,7 @@ abstract class AbstractKotlin2JsGradlePluginIT(private val irBackend: Boolean) :
     }
 
     @Test
-    fun testNewKotlinJsPlugin() = with(Project("kotlin-js-plugin-project", GradleVersionRequired.AtLeast("5.3"))) {
+    fun testNewKotlinJsPlugin() = with(Project("kotlin-js-plugin-project")) {
         assumeFalse(irBackend) // TODO: Support IR version of kotlinx.html
         setupWorkingDir()
         gradleBuildScript().modify(::transformBuildScriptWithPluginsDsl)
@@ -558,7 +546,7 @@ abstract class AbstractKotlin2JsGradlePluginIT(private val irBackend: Boolean) :
     }
 
     @Test
-    fun testYarnSetup() = with(Project("yarn-setup", GradleVersionRequired.AtLeast("5.3"))) {
+    fun testYarnSetup() = with(Project("yarn-setup")) {
         setupWorkingDir()
         gradleBuildScript().modify(::transformBuildScriptWithPluginsDsl)
         gradleSettingsScript().modify(::transformBuildScriptWithPluginsDsl)
@@ -589,7 +577,7 @@ abstract class AbstractKotlin2JsGradlePluginIT(private val irBackend: Boolean) :
     }
 
     @Test
-    fun testNpmDependencies() = with(Project("npm-dependencies", GradleVersionRequired.AtLeast("5.3"))) {
+    fun testNpmDependencies() = with(Project("npm-dependencies")) {
         setupWorkingDir()
         gradleBuildScript().modify(::transformBuildScriptWithPluginsDsl)
 
@@ -598,11 +586,111 @@ abstract class AbstractKotlin2JsGradlePluginIT(private val irBackend: Boolean) :
             assertFileExists("build/js/node_modules/file-dependency")
             assertFileExists("build/js/node_modules/file-dependency-2")
             assertFileExists("build/js/node_modules/file-dependency-3/index.js")
+            assertFileExists("build/js/node_modules/42/package.json")
         }
     }
 
     @Test
-    fun testBrowserDistribution() = with(Project("kotlin-js-browser-project", GradleVersionRequired.AtLeast("5.3"))) {
+    fun testPackageJsonWithPublicNpmDependencies() = with(Project("npm-dependencies")) {
+        setupWorkingDir()
+        gradleBuildScript().modify(::transformBuildScriptWithPluginsDsl)
+
+        build("jsJar") {
+            assertSuccessful()
+
+            val archive = fileInWorkingDir("build")
+                .resolve("libs")
+                .listFiles(FileFilter {
+                    it.extension == if (irBackend) KLIB_TYPE else "jar"
+                })!!
+                .single()
+
+            val zipFile = ZipFile(archive)
+            val packageJsonCandidates = zipFile.entries()
+                .asSequence()
+                .filter { it.name == NpmProject.PACKAGE_JSON }
+                .toList()
+
+            assertTrue("Expected existence of package.json in archive") {
+                packageJsonCandidates.size == 1
+            }
+
+            zipFile.getInputStream(packageJsonCandidates.single()).use {
+                it.reader().use {
+                    val packageJson = Gson().fromJson(it, PackageJson::class.java)
+                    val devDep = "42"
+                    val devDepVersion = "0.0.1"
+                    assertTrue(
+                        "Dev dependency \"$devDep\": \"$devDepVersion\" in package.json expected, but actual:\n" +
+                                "${packageJson.devDependencies}"
+                    ) {
+                        val devDependencies = packageJson.devDependencies
+                        devDependencies
+                            .containsKey(devDep) &&
+                                devDependencies[devDep] == devDepVersion
+                    }
+
+                    val dep = "@yworks/optimizer"
+                    val depVersion = "1.0.6"
+                    assertTrue(
+                        "Dependency \"$dep\": \"$depVersion\" in package.json expected, but actual:\n" +
+                                "${packageJson.dependencies}"
+                    ) {
+                        val dependencies = packageJson.dependencies
+                        dependencies
+                            .containsKey(dep) &&
+                                dependencies[dep] == depVersion
+                    }
+
+                    val peerDep = "date-arithmetic"
+                    val peerDepVersion = "4.1.0"
+                    assertTrue(
+                        "Peer dependency \"$peerDep\": \"$peerDepVersion\" in package.json expected, but actual:\n" +
+                                "${packageJson.peerDependencies}"
+                    ) {
+                        val peerDependencies = packageJson.peerDependencies
+                        peerDependencies
+                            .containsKey(peerDep) &&
+                                peerDependencies[peerDep] == peerDepVersion
+                    }
+                }
+            }
+        }
+
+        val newGradleBuildScript = gradleBuildScript()
+            .useLines { lines ->
+                lines
+                    .filterNot {
+                        it.contains("npm", ignoreCase = true)
+                    }
+                    .joinToString("\n")
+            }
+        gradleBuildScript().modify {
+            newGradleBuildScript
+        }
+
+        build("jsJar") {
+            assertSuccessful()
+            val archive = fileInWorkingDir("build")
+                .resolve("libs")
+                .listFiles(FileFilter {
+                    it.extension == if (irBackend) KLIB_TYPE else "jar"
+                })!!
+                .single()
+
+            val packageJsonCandidates = ZipFile(archive).entries()
+                .asSequence()
+                .filter { it.name == NpmProject.PACKAGE_JSON }
+                .toList()
+
+            assertTrue("Expected absence of package.json in ${archive.name}") {
+                packageJsonCandidates.isEmpty()
+            }
+        }
+    }
+
+    @Test
+    fun testBrowserDistribution() = with(Project("kotlin-js-browser-project")) {
         setupWorkingDir()
         gradleBuildScript().modify(::transformBuildScriptWithPluginsDsl)
         gradleSettingsScript().modify(::transformBuildScriptWithPluginsDsl)
@@ -616,8 +704,8 @@ abstract class AbstractKotlin2JsGradlePluginIT(private val irBackend: Boolean) :
 
             assertTasksExecuted(":app:browserProductionWebpack")
 
-            assertFileExists("build/js/packages/kotlin-js-browser-base-jsIr")
-            assertFileExists("build/js/packages/kotlin-js-browser-base-jsLegacy")
+            assertFileExists("build/js/packages/kotlin-js-browser-base-js-ir")
+            assertFileExists("build/js/packages/kotlin-js-browser-base-js-legacy")
             assertFileExists("build/js/packages/kotlin-js-browser-lib")
             assertFileExists("build/js/packages/kotlin-js-browser-app")
 
@@ -631,7 +719,7 @@ abstract class AbstractKotlin2JsGradlePluginIT(private val irBackend: Boolean) :
                 assertFileExists("build/js/packages/kotlin-js-browser-app/kotlin-dce/kotlin.js")
                 assertFileExists("build/js/packages/kotlin-js-browser-app/kotlin-dce/kotlin-js-browser-app.js")
                 assertFileExists("build/js/packages/kotlin-js-browser-app/kotlin-dce/kotlin-js-browser-lib.js")
-                assertFileExists("build/js/packages/kotlin-js-browser-app/kotlin-dce/kotlin-js-browser-base-jsLegacy.js")
+                assertFileExists("build/js/packages/kotlin-js-browser-app/kotlin-dce/kotlin-js-browser-base-js-legacy.js")
 
                 assertFileExists("app/build/distributions/app.js.map")
             }
@@ -640,12 +728,99 @@ abstract class AbstractKotlin2JsGradlePluginIT(private val irBackend: Boolean) :
         build("clean", "browserDistribution") {
             assertTasksExecuted(
                 ":app:processResources",
-                ":app:browserDistributeResources"
+                if (irBackend) ":app:browserProductionExecutableDistributeResources" else ":app:browserDistributeResources"
             )
 
             assertFileExists("app/build/distributions/index.html")
         }
     }
 
+    @Test
+    fun testUpdatingPackageJsonOnDependenciesClash() = with(Project("kotlin-js-dependencies-clash")) {
+        setupWorkingDir()
+        gradleBuildScript().modify(::transformBuildScriptWithPluginsDsl)
 
+        fun assertFileVersion(
+            packageJson: PackageJson,
+            dependency: String
+        ) {
+            val version = packageJson.dependencies[dependency]!!
+            assertTrue("${packageJson.name} must have $dependency with file version, but $version found") {
+                version.isFileVersion()
+            }
+        }
+
+        build("packageJson", "rootPackageJson", "kotlinNpmInstall") {
+            assertSuccessful()
+
+            fun getPackageJson(subProject: String) =
+                fileInWorkingDir("build/js/packages/kotlin-js-dependencies-clash-$subProject")
+                    .resolve(NpmProject.PACKAGE_JSON)
+                    .let {
+                        Gson().fromJson(it.readText(), PackageJson::class.java)
+                    }
+
+            val basePackageJson = getPackageJson("base")
+            val libPackageJson = getPackageJson("lib")
+
+            val dependency = "kotlinx-coroutines-core"
+            assertFileVersion(basePackageJson, dependency)
+            assertFileVersion(libPackageJson, dependency)
+        }
+    }
+
+    @Test
+    fun testYarnResolution() = with(Project("kotlin-js-yarn-resolutions")) {
+        setupWorkingDir()
+        gradleBuildScript().modify(::transformBuildScriptWithPluginsDsl)
+
+        build("packageJson", "rootPackageJson", "kotlinNpmInstall") {
+            assertSuccessful()
+
+            fun getPackageJson() =
+                fileInWorkingDir("build/js")
+                    .resolve(NpmProject.PACKAGE_JSON)
+                    .let {
+                        Gson().fromJson(it.readText(), PackageJson::class.java)
+                    }
+
+            val name = "lodash"
+            val version = getPackageJson().resolutions?.get(name)
+            val requiredVersion = ">=1.0.0 <1.2.1 || >1.4.0 <2.0.0"
+            assertTrue("Root package.json must have resolution $name with version $requiredVersion, but $version found") {
+                version == requiredVersion
+            }
+
+            val react = "react"
+            val reactVersion = getPackageJson().resolutions?.get(react)
+            val requiredReactVersion = "16.0.0"
+            assertTrue("Root package.json must have resolution $react with version $requiredReactVersion, but $reactVersion found") {
+                reactVersion == requiredReactVersion
+            }
+        }
+    }
+
+    @Test
+    fun testDirectoryDependencyNotFailProjectResolution() {
+        with(Project("kotlin-js-nodejs-project")) {
+            setupWorkingDir()
+            gradleBuildScript().modify(::transformBuildScriptWithPluginsDsl)
+            gradleSettingsScript().modify(::transformBuildScriptWithPluginsDsl)
+
+            gradleBuildScript().appendText(
+                """${"\n"}
+                dependencies {
+                    implementation(files("${"$"}{projectDir}/custom"))
+                    implementation(files("${"$"}{projectDir}/custom2"))
+                }
+            """.trimIndent()
+            )
+
+            build(
+                "packageJson"
+            ) {
+                assertSuccessful()
+            }
+        }
+    }
 }

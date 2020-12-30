@@ -16,10 +16,10 @@ import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.psi.*
 import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.NonNls
+import org.jetbrains.kotlin.descriptors.DescriptorVisibility
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.core.getFqNameWithImplicitPrefix
-import org.jetbrains.kotlin.idea.core.quoteIfNeeded
 import org.jetbrains.kotlin.idea.core.util.CodeInsightUtils
 import org.jetbrains.kotlin.idea.quickfix.IntentionActionPriority
 import org.jetbrains.kotlin.idea.quickfix.createFromUsage.CreateFromUsageFixBase
@@ -46,7 +46,7 @@ import java.util.*
 import com.intellij.codeInsight.daemon.impl.quickfix.ClassKind as IdeaClassKind
 
 enum class ClassKind(@NonNls val keyword: String, @Nls val description: String) {
-    PLAIN_CLASS("class", KotlinBundle.message("find.usages.class")),
+    PLAIN_CLASS("class", KotlinBundle.message("text.class")),
     ENUM_CLASS("enum class", KotlinBundle.message("text.enum")),
     ENUM_ENTRY("", KotlinBundle.message("text.enum.constant")),
     ANNOTATION_CLASS("annotation class", KotlinBundle.message("text.annotation")),
@@ -68,7 +68,8 @@ data class ClassInfo(
     val inner: Boolean = false,
     val open: Boolean = false,
     val typeArguments: List<TypeInfo> = Collections.emptyList(),
-    val parameterInfos: List<ParameterInfo> = Collections.emptyList()
+    val parameterInfos: List<ParameterInfo> = Collections.emptyList(),
+    val primaryConstructorVisibility: DescriptorVisibility? = null
 ) {
     val applicableParents by lazy {
         targetParents.filter {
@@ -198,7 +199,7 @@ open class CreateClassFromUsageFix<E : KtElement> protected constructor(
 
             val targetDirectory = dialog.targetDirectory ?: return
             val fileName = "$className.${KotlinFileType.EXTENSION}"
-            val packageFqName = targetDirectory.getFqNameWithImplicitPrefix()?.quoteIfNeeded()
+            val packageFqName = targetDirectory.getFqNameWithImplicitPrefix()
 
             file.project.executeWriteCommand(text) {
                 val targetFile = getOrCreateKotlinFile(fileName, targetDirectory, (packageFqName ?: defaultPackageFqName).asString())
@@ -222,7 +223,8 @@ open class CreateClassFromUsageFix<E : KtElement> protected constructor(
                 val constructorInfo = ClassWithPrimaryConstructorInfo(
                     classInfo,
                     // Need for #KT-22137
-                    if (expectedTypeInfo.isUnit) TypeInfo.Empty else expectedTypeInfo
+                    if (expectedTypeInfo.isUnit) TypeInfo.Empty else expectedTypeInfo,
+                    primaryConstructorVisibility = classInfo.primaryConstructorVisibility
                 )
                 val builder = CallableBuilderConfiguration(
                     Collections.singletonList(constructorInfo),

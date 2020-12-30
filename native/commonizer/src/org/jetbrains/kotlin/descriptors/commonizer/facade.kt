@@ -5,38 +5,66 @@
 
 package org.jetbrains.kotlin.descriptors.commonizer
 
-import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.descriptors.commonizer.builder.DeclarationsBuilderVisitor1
 import org.jetbrains.kotlin.descriptors.commonizer.builder.DeclarationsBuilderVisitor2
 import org.jetbrains.kotlin.descriptors.commonizer.builder.createGlobalBuilderComponents
 import org.jetbrains.kotlin.descriptors.commonizer.core.CommonizationVisitor
-import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.mergeRoots
+import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.*
+import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.CirTreeMerger.CirTreeMergeResult
 import org.jetbrains.kotlin.storage.LockBasedStorageManager
+import org.jetbrains.kotlin.storage.StorageManager
 
-fun runCommonization(parameters: Parameters): Result {
+fun runCommonization(parameters: CommonizerParameters): CommonizerResult {
     if (!parameters.hasAnythingToCommonize())
-        return NothingToCommonize
+        return CommonizerResult.NothingToDo
 
     val storageManager = LockBasedStorageManager("Declaration descriptors commonization")
 
-    // build merged tree:
-    val mergedTree = mergeRoots(storageManager, parameters.targetProviders)
-
-    // commonize:
-    mergedTree.accept(CommonizationVisitor(mergedTree), Unit)
+    val mergeResult = mergeAndCommonize(storageManager, parameters)
+    val mergedTree = mergeResult.root
 
     // build resulting descriptors:
-    val components = mergedTree.createGlobalBuilderComponents(storageManager, parameters.statsCollector)
+    val components = mergedTree.createGlobalBuilderComponents(storageManager, parameters)
     mergedTree.accept(DeclarationsBuilderVisitor1(components), emptyList())
     mergedTree.accept(DeclarationsBuilderVisitor2(components), emptyList())
 
-    val modulesByTargets = LinkedHashMap<Target, Collection<ModuleDescriptor>>() // use linked hash map to preserve order
-    components.targetComponents.forEach {
-        val target = it.target
+    val modulesByTargets = LinkedHashMap<CommonizerTarget, Collection<ModuleResult>>() // use linked hash map to preserve order
+    components.targetComponents.forEach { component ->
+        val target = component.target
         check(target !in modulesByTargets)
 
-        modulesByTargets[target] = components.cache.getAllModules(it.index)
+        val commonizedModules: List<ModuleResult.Commonized> = components.cache.getAllModules(component.index).map(ModuleResult::Commonized)
+
+        val missingModules: List<ModuleResult.Missing> = if (target is LeafTarget)
+            mergeResult.missingModuleInfos.getValue(target).map { ModuleResult.Missing(it.originalLocation) }
+        else emptyList()
+
+        modulesByTargets[target] = commonizedModules + missingModules
     }
 
-    return CommonizationPerformed(modulesByTargets)
+    parameters.progressLogger?.invoke("Prepared new descriptors")
+
+    return CommonizerResult.Done(modulesByTargets)
+}
+
+private fun mergeAndCommonize(storageManager: StorageManager, parameters: CommonizerParameters): CirTreeMergeResult {
+    // build merged tree:
+    val classifiers = CirKnownClassifiers(
+        commonized = CirCommonizedClassifiers.default(),
+        forwardDeclarations = CirForwardDeclarations.default(),
+        dependeeLibraries = mapOf(
+            // for now, supply only common dependee libraries (ex: Kotlin stdlib)
+            parameters.sharedTarget to CirProvidedClassifiers.fromModules(storageManager) {
+                parameters.dependeeModulesProvider?.loadModules(emptyList())?.values.orEmpty()
+            }
+        )
+    )
+    val mergeResult = CirTreeMerger(storageManager, classifiers, parameters).merge()
+
+    // commonize:
+    val mergedTree = mergeResult.root
+    mergedTree.accept(CommonizationVisitor(classifiers, mergedTree), Unit)
+    parameters.progressLogger?.invoke("Commonized declarations")
+
+    return mergeResult
 }

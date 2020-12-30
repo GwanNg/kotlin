@@ -5,8 +5,9 @@
 
 package org.jetbrains.kotlin.fir
 
-import org.jetbrains.kotlin.contracts.description.InvocationKind
+import org.jetbrains.kotlin.contracts.description.EventOccurrencesRange
 import org.jetbrains.kotlin.fir.declarations.FirAnonymousFunction
+import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
 import org.jetbrains.kotlin.fir.declarations.FirTypeParameter
 import org.jetbrains.kotlin.fir.declarations.FirValueParameter
 import org.jetbrains.kotlin.fir.declarations.builder.buildAnonymousFunction
@@ -31,7 +32,6 @@ fun FirFunctionCall.copy(
     dispatchReceiver: FirExpression = this.dispatchReceiver,
     extensionReceiver: FirExpression = this.extensionReceiver,
     source: FirSourceElement? = this.source,
-    safe: Boolean = this.safe,
     typeArguments: List<FirTypeProjection> = this.typeArguments,
     resultType: FirTypeRef = this.typeRef
 ): FirFunctionCall {
@@ -46,7 +46,6 @@ fun FirFunctionCall.copy(
     }
     builder.apply {
         this.source = source
-        this.safe = safe
         this.annotations.addAll(annotations)
         this.argumentList = argumentList
         this.explicitReceiver = explicitReceiver
@@ -62,18 +61,20 @@ fun FirAnonymousFunction.copy(
     receiverTypeRef: FirTypeRef? = this.receiverTypeRef,
     source: FirSourceElement? = this.source,
     session: FirSession = this.session,
+    origin: FirDeclarationOrigin = this.origin,
     returnTypeRef: FirTypeRef = this.returnTypeRef,
     valueParameters: List<FirValueParameter> = this.valueParameters,
     body: FirBlock? = this.body,
     annotations: List<FirAnnotationCall> = this.annotations,
     typeRef: FirTypeRef = this.typeRef,
     label: FirLabel? = this.label,
-    controlFlowGraphReference: FirControlFlowGraphReference = this.controlFlowGraphReference,
-    invocationKind: InvocationKind? = this.invocationKind
+    controlFlowGraphReference: FirControlFlowGraphReference? = this.controlFlowGraphReference,
+    invocationKind: EventOccurrencesRange? = this.invocationKind
 ): FirAnonymousFunction {
     return buildAnonymousFunction {
         this.source = source
         this.session = session
+        this.origin = origin
         this.returnTypeRef = returnTypeRef
         this.receiverTypeRef = receiverTypeRef
         symbol = this@copy.symbol

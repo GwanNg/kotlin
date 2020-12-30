@@ -6,9 +6,7 @@
 package org.jetbrains.kotlin.backend.common.serialization
 
 import org.jetbrains.kotlin.backend.common.serialization.encodings.BinarySymbolData
-import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
-import org.jetbrains.kotlin.descriptors.DeserializedDescriptor
-import org.jetbrains.kotlin.descriptors.PropertyAccessorDescriptor
+import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrSymbolOwner
 import org.jetbrains.kotlin.ir.descriptors.IrBuiltIns
@@ -19,6 +17,7 @@ import org.jetbrains.kotlin.library.IrLibrary
 import org.jetbrains.kotlin.library.SerializedIrFile
 import org.jetbrains.kotlin.library.impl.*
 
+class ICData(val icData: List<SerializedIrFile>, val containsErrorCode: Boolean)
 
 class ICKotlinLibrary(private val icData: List<SerializedIrFile>) : IrLibrary {
     override val dataFlowGraph: ByteArray? = null
@@ -105,26 +104,27 @@ class CurrentModuleWithICDeserializer(
         icDeserializer.deserializeReachableDeclarations()
     }
 
-    override fun postProcess() {
-        icDeserializer.postProcess()
-    }
-
     private fun DeclarationDescriptor.isDirtyDescriptor(): Boolean {
         if (this is PropertyAccessorDescriptor) return correspondingProperty.isDirtyDescriptor()
+        // Since descriptors for FO methods of `kotlin.Any` (toString, equals, hashCode) are Deserialized even in
+        // dirty files make test more precise checking containing declaration for non-static members
+        if (this is CallableMemberDescriptor && dispatchReceiverParameter != null) {
+            return containingDeclaration.isDirtyDescriptor()
+        }
         return this !is DeserializedDescriptor
     }
 
-    override fun init() {
+    override fun init(delegate: IrModuleDeserializer) {
         val knownBuiltIns = irBuiltIns.knownBuiltins.map { (it as IrSymbolOwner).symbol }.toSet()
         symbolTable.forEachPublicSymbol {
             if (it.descriptor.isDirtyDescriptor()) { // public && non-deserialized should be dirty symbol
                 if (it !in knownBuiltIns) {
-                    dirtyDeclarations[it.signature] = it
+                    dirtyDeclarations[it.signature!!] = it
                 }
             }
         }
 
-        icDeserializer.init(this)
+        icDeserializer.init(delegate)
     }
 
     override val klib: IrLibrary
@@ -134,4 +134,6 @@ class CurrentModuleWithICDeserializer(
         get() = delegate.moduleFragment
     override val moduleDependencies: Collection<IrModuleDeserializer>
         get() = delegate.moduleDependencies
+    override val isCurrent: Boolean
+        get() = delegate.isCurrent
 }

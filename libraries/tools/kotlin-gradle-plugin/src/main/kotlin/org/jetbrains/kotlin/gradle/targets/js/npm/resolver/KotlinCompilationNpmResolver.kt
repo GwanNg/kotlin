@@ -6,6 +6,7 @@
 package org.jetbrains.kotlin.gradle.targets.js.npm.resolver
 
 import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.FileCollectionDependency
 import org.gradle.api.artifacts.ResolvedArtifact
 import org.gradle.api.artifacts.ResolvedDependency
 import org.gradle.api.artifacts.component.ProjectComponentIdentifier
@@ -20,6 +21,10 @@ import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinJsCompilation
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinUsages
 import org.jetbrains.kotlin.gradle.plugin.mpp.disambiguateName
+import org.jetbrains.kotlin.gradle.plugin.mpp.isMain
+import org.jetbrains.kotlin.gradle.plugin.sources.KotlinDependencyScope
+import org.jetbrains.kotlin.gradle.plugin.sources.compilationDependencyConfigurationByScope
+import org.jetbrains.kotlin.gradle.plugin.sources.sourceSetDependencyConfigurationByScope
 import org.jetbrains.kotlin.gradle.plugin.usesPlatformOf
 import org.jetbrains.kotlin.gradle.targets.js.ir.KotlinJsIrTarget
 import org.jetbrains.kotlin.gradle.targets.js.npm.*
@@ -51,25 +56,29 @@ internal class KotlinCompilationNpmResolver(
     val publicPackageJsonTaskHolder: TaskProvider<PublicPackageJsonTask> =
         project.registerTask<PublicPackageJsonTask>(
             npmProject.publicPackageJsonTaskName,
-            listOf(nodeJs, npmProject)
+            listOf(compilation)
         ) {
-            it.skipOnEmptyNpmDependencies = true
-            it.dependsOn(nodeJs.npmInstallTask)
+            it.dependsOn(nodeJs.npmInstallTaskProvider)
             it.dependsOn(packageJsonTaskHolder)
         }.also { packageJsonTask ->
-            if (compilation.name == KotlinCompilation.MAIN_COMPILATION_NAME) {
+            if (compilation.isMain()) {
                 project.tasks
                     .withType(Zip::class.java)
                     .named(npmProject.target.artifactsTaskName)
                     .configure {
-                        it.from(packageJsonTask)
+                        it.dependsOn(packageJsonTask)
                     }
             }
         }
 
-    val plugins: List<CompilationResolverPlugin> = projectResolver.resolver.plugins.flatMap {
-        it.createCompilationResolverPlugins(this)
-    }
+    val plugins: List<CompilationResolverPlugin> = projectResolver.resolver.plugins
+        .flatMap {
+            if (compilation.isMain()) {
+                it.createCompilationResolverPlugins(this)
+            } else {
+                emptyList()
+            }
+        }
 
     override fun toString(): String = "KotlinCompilationNpmResolver(${npmProject.name})"
 
@@ -100,7 +109,11 @@ internal class KotlinCompilationNpmResolver(
     fun getResolutionOrResolveIfForced(): KotlinCompilationNpmResolution? {
         if (resolution != null) return resolution
         if (packageJsonTaskHolder.get().state.upToDate) return resolve(skipWriting = true)
-        if (resolver.forceFullResolve && resolution == null) return resolve()
+        if (resolver.forceFullResolve && resolution == null) {
+            // need to force all NPM tasks to be configured in IDEA import
+            project.tasks.implementing(RequiresNpmDependencies::class).all {}
+            return resolve()
+        }
         return null
     }
 
@@ -122,38 +135,32 @@ internal class KotlinCompilationNpmResolver(
         all.isCanBeResolved = true
         all.description = "NPM configuration for $compilation."
 
-        compilation.allKotlinSourceSets.forEach { sourceSet ->
-            sourceSet.relatedConfigurationNames.forEach { configurationName ->
-                val configuration = project.configurations.getByName(configurationName)
-                all.extendsFrom(configuration)
+        KotlinDependencyScope.values().forEach { scope ->
+            val compilationConfiguration = project.compilationDependencyConfigurationByScope(
+                compilation,
+                scope
+            )
+            all.extendsFrom(compilationConfiguration)
+            compilation.allKotlinSourceSets.forEach { sourceSet ->
+                val sourceSetConfiguration = project.sourceSetDependencyConfigurationByScope(sourceSet, scope)
+                all.extendsFrom(sourceSetConfiguration)
             }
         }
 
-        createNpmToolsConfiguration()?.let { tools ->
-            all.extendsFrom(tools)
-        }
+        // We don't have `kotlin-js-test-runner` in NPM yet
+        all.dependencies.add(nodeJs.versions.kotlinJsTestRunner.createDependency(project))
+
+        npmProject.externalsDir
+            .listFiles()
+            ?.filter { it.isCompatibleArchive }
+            ?.forEach {
+                project.dependencies.add(
+                    all.name,
+                    project.files(it)
+                )
+            }
 
         return all
-    }
-
-    private fun createNpmToolsConfiguration(): Configuration? {
-        val taskRequirements = projectResolver.taskRequirements.getTaskRequirements(compilation)
-        if (taskRequirements.isEmpty()) return null
-
-        val toolsConfiguration = project.configurations.create(compilation.disambiguateName("npmTools"))
-
-        toolsConfiguration.isVisible = false
-        toolsConfiguration.isCanBeConsumed = false
-        toolsConfiguration.isCanBeResolved = true
-        toolsConfiguration.description = "NPM Tools configuration for $compilation."
-
-        taskRequirements.forEach { requirement ->
-            requirement.requiredNpmDependencies.forEach { requiredNpmDependency ->
-                toolsConfiguration.dependencies.add(requiredNpmDependency.createDependency(project))
-            }
-        }
-
-        return toolsConfiguration
     }
 
     data class ExternalGradleDependency(
@@ -171,6 +178,7 @@ internal class KotlinCompilationNpmResolver(
         private val internalCompositeDependencies = mutableSetOf<CompositeDependency>()
         private val externalGradleDependencies = mutableSetOf<ExternalGradleDependency>()
         private val externalNpmDependencies = mutableSetOf<NpmDependency>()
+        private val fileCollectionDependencies = mutableSetOf<FileCollectionDependency>()
 
         fun visit(configuration: Configuration) {
             configuration.resolvedConfiguration.firstLevelModuleDependencies.forEach {
@@ -180,6 +188,7 @@ internal class KotlinCompilationNpmResolver(
             configuration.allDependencies.forEach { dependency ->
                 when (dependency) {
                     is NpmDependency -> externalNpmDependencies.add(dependency)
+                    is FileCollectionDependency -> fileCollectionDependencies.add(dependency)
                 }
             }
 
@@ -189,12 +198,24 @@ internal class KotlinCompilationNpmResolver(
                 internalDependencies.add(projectResolver[main])
             }
 
+            val hasPublicNpmDependencies = externalNpmDependencies.isNotEmpty()
+
+            if (compilation.isMain() && hasPublicNpmDependencies) {
+                project.tasks
+                    .withType(Zip::class.java)
+                    .named(npmProject.target.artifactsTaskName)
+                    .configure { task ->
+                        task.from(publicPackageJsonTaskHolder)
+                    }
+            }
+
             plugins.forEach {
                 it.hookDependencies(
                     internalDependencies,
                     internalCompositeDependencies,
                     externalGradleDependencies,
-                    externalNpmDependencies
+                    externalNpmDependencies,
+                    fileCollectionDependencies
                 )
             }
         }
@@ -270,7 +291,8 @@ internal class KotlinCompilationNpmResolver(
             internalDependencies,
             internalCompositeDependencies,
             externalGradleDependencies,
-            externalNpmDependencies
+            externalNpmDependencies,
+            fileCollectionDependencies
         )
     }
 
@@ -285,7 +307,10 @@ internal class KotlinCompilationNpmResolver(
         val externalGradleDependencies: Collection<File>,
 
         @get:Input
-        val externalDependencies: Collection<String>
+        val externalDependencies: Collection<String>,
+
+        @get:Input
+        val fileCollectionDependencies: Collection<File>
     ) : Serializable
 
     @Suppress("MemberVisibilityCanBePrivate")
@@ -293,14 +318,16 @@ internal class KotlinCompilationNpmResolver(
         val internalDependencies: Collection<KotlinCompilationNpmResolver>,
         val internalCompositeDependencies: Collection<CompositeDependency>,
         val externalGradleDependencies: Collection<ExternalGradleDependency>,
-        val externalNpmDependencies: Collection<NpmDependency>
+        val externalNpmDependencies: Collection<NpmDependency>,
+        val fileCollectionDependencies: Collection<FileCollectionDependency>
     ) {
         val inputs: PackageJsonProducerInputs
             get() = PackageJsonProducerInputs(
                 internalDependencies.map { it.npmProject.name },
                 internalCompositeDependencies.flatMap { it.getPackages() },
                 externalGradleDependencies.map { it.artifact.file },
-                externalNpmDependencies.map { "${it.scope} ${it.key}:${it.version}" }
+                externalNpmDependencies.map { it.uniqueRepresentation() },
+                fileCollectionDependencies.map { it.files }.flatMap { it.files }
             )
 
         fun createPackageJson(skipWriting: Boolean): KotlinCompilationNpmResolution {
@@ -309,23 +336,40 @@ internal class KotlinCompilationNpmResolver(
                     ?: error("Unresolved dependent npm package: ${this@KotlinCompilationNpmResolver} -> $it")
             }
             val importedExternalGradleDependencies = externalGradleDependencies.mapNotNull {
-                resolver.gradleNodeModules.get(it.dependency, it.artifact.file)
-            }
+                resolver.gradleNodeModules.get(it.dependency.moduleName, it.dependency.moduleVersion, it.artifact.file)
+            } + fileCollectionDependencies.flatMap { dependency ->
+                dependency.files
+                    // Gradle can hash with FileHasher only files and only existed files
+                    .filter { it.isFile }
+                    .map { file ->
+                        resolver.gradleNodeModules.get(
+                            file.name,
+                            dependency.version ?: "0.0.1",
+                            file
+                        )
+                    }
+            }.filterNotNull()
 
             val compositeDependencies = internalCompositeDependencies.flatMap { dependency ->
                 dependency.getPackages()
                     .map { file ->
                         resolver.compositeNodeModules.get(
-                            dependency.dependency,
+                            dependency.dependency.moduleName,
+                            dependency.dependency.moduleVersion,
                             file
                         )
                     }
             }
                 .filterNotNull()
 
+            val toolsNpmDependencies = nodeJs.taskRequirements
+                .getCompilationNpmRequirements(compilation)
+
+            val allNpmDependencies = externalNpmDependencies + toolsNpmDependencies
+
             val packageJson = packageJson(
                 npmProject,
-                externalNpmDependencies
+                allNpmDependencies
             )
 
             compositeDependencies.forEach {
@@ -345,7 +389,7 @@ internal class KotlinCompilationNpmResolver(
             }
 
             if (!skipWriting) {
-                packageJson.saveTo(npmProject.packageJsonFile)
+                packageJson.saveTo(npmProject.prePackageJsonFile)
             }
 
             return KotlinCompilationNpmResolution(
@@ -354,7 +398,7 @@ internal class KotlinCompilationNpmResolver(
                 resolvedInternalDependencies,
                 compositeDependencies,
                 importedExternalGradleDependencies,
-                externalNpmDependencies,
+                allNpmDependencies,
                 packageJson
             )
         }

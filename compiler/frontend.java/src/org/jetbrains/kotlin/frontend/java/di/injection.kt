@@ -42,8 +42,10 @@ import org.jetbrains.kotlin.load.kotlin.PackagePartProvider
 import org.jetbrains.kotlin.load.kotlin.VirtualFileFinderFactory
 import org.jetbrains.kotlin.platform.TargetPlatform
 import org.jetbrains.kotlin.resolve.*
+import org.jetbrains.kotlin.resolve.calls.tower.ImplicitsExtensionsResolutionFilter
 import org.jetbrains.kotlin.resolve.jvm.JavaDescriptorResolver
 import org.jetbrains.kotlin.resolve.jvm.JvmDiagnosticComponents
+import org.jetbrains.kotlin.resolve.jvm.multiplatform.OptionalAnnotationPackageFragmentProvider
 import org.jetbrains.kotlin.resolve.jvm.platform.JvmPlatformAnalyzerServices
 import org.jetbrains.kotlin.resolve.lazy.KotlinCodeAnalyzer
 import org.jetbrains.kotlin.resolve.lazy.declarations.DeclarationProviderFactory
@@ -62,9 +64,14 @@ fun createContainerForLazyResolveWithJava(
     languageVersionSettings: LanguageVersionSettings,
     useBuiltInsProvider: Boolean,
     configureJavaClassFinder: (StorageComponentContainer.() -> Unit)? = null,
-    javaClassTracker: JavaClassesTracker? = null
+    javaClassTracker: JavaClassesTracker? = null,
+    implicitsResolutionFilter: ImplicitsExtensionsResolutionFilter? = null,
+    sealedInheritorsProvider: SealedClassInheritorsProvider = CliSealedClassInheritorsProvider
 ): StorageComponentContainer = createContainer("LazyResolveWithJava", JvmPlatformAnalyzerServices) {
-    configureModule(moduleContext, jvmPlatform, JvmPlatformAnalyzerServices, bindingTrace, languageVersionSettings)
+    configureModule(
+        moduleContext, jvmPlatform, JvmPlatformAnalyzerServices, bindingTrace, languageVersionSettings,
+        sealedInheritorsProvider
+    )
 
     configureIncrementalCompilation(lookupTracker, expectActualTracker)
     configureStandardResolveComponents()
@@ -72,6 +79,7 @@ fun createContainerForLazyResolveWithJava(
     useInstance(moduleContentScope)
     useInstance(packagePartProvider)
     useInstance(declarationProviderFactory)
+    useInstanceIfNotNull(implicitsResolutionFilter)
 
     useInstance(VirtualFileFinderFactory.getInstance(moduleContext.project).create(moduleContentScope))
 
@@ -87,7 +95,7 @@ fun createContainerForLazyResolveWithJava(
 }
 
 fun StorageComponentContainer.initializeJavaSpecificComponents(bindingTrace: BindingTrace) {
-    get<AbstractJavaClassFinder>().initialize(bindingTrace, get<KotlinCodeAnalyzer>())
+    get<AbstractJavaClassFinder>().initialize(bindingTrace, get<KotlinCodeAnalyzer>(), get<LanguageVersionSettings>())
 }
 
 fun StorageComponentContainer.configureJavaSpecificComponents(
@@ -115,16 +123,21 @@ fun StorageComponentContainer.configureJavaSpecificComponents(
         useImpl<JavaSourceElementFactoryImpl>()
     }
 
-    useInstance(languageVersionSettings.getFlag(JvmAnalysisFlags.jsr305))
+    useInstance(languageVersionSettings.getFlag(JvmAnalysisFlags.javaTypeEnhancementState))
 
     if (useBuiltInsProvider) {
-        useInstance((moduleContext.module.builtIns as JvmBuiltIns).settings)
+        useInstance((moduleContext.module.builtIns as JvmBuiltIns).customizer)
         useImpl<JvmBuiltInsPackageFragmentProvider>()
     }
+    useImpl<OptionalAnnotationPackageFragmentProvider>()
 
     useInstance(javaClassTracker ?: JavaClassesTracker.Default)
     useInstance(
-        JavaResolverSettings.create(isReleaseCoroutines = languageVersionSettings.supportsFeature(LanguageFeature.ReleaseCoroutines))
+        JavaResolverSettings.create(
+            isReleaseCoroutines = languageVersionSettings.supportsFeature(LanguageFeature.ReleaseCoroutines),
+            correctNullabilityForNotNullTypeParameter = languageVersionSettings.supportsFeature(LanguageFeature.ProhibitUsingNullableTypeParameterAgainstNotNullAnnotated),
+            typeEnhancementImprovements = languageVersionSettings.supportsFeature(LanguageFeature.ImprovementsAroundTypeEnhancement)
+        )
     )
 
     useImpl<FilesByFacadeFqNameIndexer>()

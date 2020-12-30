@@ -27,6 +27,7 @@ fun JUnit.configureForKotlin(xmx: String = "1600m") {
         "-Djna.nosys=true",
         if (Platform[201].orHigher()) "-Didea.platform.prefix=Idea" else null,
         "-Didea.is.unit.test=true",
+        if (Platform[202].orHigher()) "-Didea.ignore.disabled.plugins=true" else null,
         "-Didea.home.path=$ideaSdkPath",
         "-Djps.kotlin.home=${ideaPluginDir.absolutePath}",
         "-Dkotlin.ni=" + if (rootProject.hasProperty("newInferenceTests")) "true" else "false",
@@ -62,9 +63,18 @@ fun setupGenerateAllTestsRunConfiguration() {
 // Needed because of idea.ext plugin doesn't allow to set TEST_SEARCH_SCOPE = moduleWithDependencies
 fun setupFirRunConfiguration() {
 
+    val tests = listOf(
+        "org\\.jetbrains\\.kotlin\\.fir((?!\\.lightTree\\.benchmark)(\\.\\w+)*)\\.((?!(TreesCompareTest|TotalKotlinTest|RawFirBuilderTotalKotlinTestCase))\\w+)",
+        "org\\.jetbrains\\.kotlin\\.codegen\\.ir\\.FirBlackBoxCodegenTestGenerated",
+        "org\\.jetbrains\\.kotlin\\.spec\\.checkers\\.FirDiagnosticsTestSpecGenerated",
+        "org\\.jetbrains\\.kotlin\\.codegen\\.ir\\.FirBytecodeTextTestGenerated",
+        "org\\.jetbrains\\.kotlin\\.codegen\\.ir\\.FirBlackBoxAgainstJavaCodegenTestGenerated",
+        "org\\.jetbrains\\.kotlin\\.codegen\\.ir\\.FirBlackBoxInlineCodegenTestGenerated"
+    )
+
     val junit = JUnit("_stub").apply { configureForKotlin("2048m") }
-    junit.moduleName = "kotlin.compiler.test"
-    junit.pattern = "^(org\\.jetbrains\\.kotlin\\.fir((?!\\.lightTree\\.benchmark)(\\.\\w+)*)\\.((?!(TreesCompareTest|TotalKotlinTest|RawFirBuilderTotalKotlinTestCase))\\w+)|org\\.jetbrains\\.kotlin\\.codegen\\.ir\\.FirBlackBoxCodegenTestGenerated|org\\.jetbrains\\.kotlin\\.spec\\.checkers\\.FirDiagnosticsTestSpecGenerated)\$"
+    junit.moduleName = "kotlin.compiler.tests-spec.test"
+    junit.pattern = tests.joinToString(separator = "|", prefix = "^(", postfix = ")\$")
     junit.vmParameters = junit.vmParameters.replace(rootDir.absolutePath, "\$PROJECT_DIR\$")
     junit.workingDirectory = junit.workingDirectory.replace(rootDir.absolutePath, "\$PROJECT_DIR\$")
 
@@ -102,20 +112,33 @@ if (kotlinBuildProperties.isInJpsBuildIdeaSync) {
         apply(mapOf("plugin" to "idea"))
         // Make Idea import embedded configuration as transitive dependency for some configurations
         afterEvaluate {
+            val jpsBuildTestDependencies = configurations.maybeCreate("jpsBuildTestDependencies").apply {
+                isCanBeConsumed = false
+                isCanBeResolved = true
+                attributes {
+                    attribute(Usage.USAGE_ATTRIBUTE, objects.named("embedded-java-runtime"))
+                }
+            }
+
             listOf(
                 "testCompile",
                 "testCompileOnly",
                 "testRuntime",
                 "testRuntimeOnly"
             ).forEach { configurationName ->
-                val dependencyProjects = configurations
-                    .findByName(configurationName)
+                val configuration = configurations.findByName(configurationName)
+
+                configuration?.apply {
+                    extendsFrom(jpsBuildTestDependencies)
+                }
+
+                val dependencyProjects = configuration
                     ?.dependencies
                     ?.mapNotNull { (it as? ProjectDependency)?.dependencyProject }
 
                 dependencies {
                     dependencyProjects?.forEach {dependencyProject ->
-                        add(configurationName, project(dependencyProject.path, configuration = "embedded"))
+                        add(jpsBuildTestDependencies.name, project(dependencyProject.path))
                     }
                 }
             }
@@ -184,6 +207,7 @@ if (kotlinBuildProperties.isInJpsBuildIdeaSync) {
                             pluginDir: File,
                             disableProcessCanceledException: Boolean = false
                         ) {
+                            val useAndroidStudio = rootProject.extra.has("versions.androidStudioRelease")
                             application(title) {
                                 moduleName = "kotlin.idea-runner.main"
                                 workingDirectory = File(intellijRootDir(), "bin").toString()
@@ -199,11 +223,13 @@ if (kotlinBuildProperties.isInJpsBuildIdeaSync) {
                                     "-Didea.system.path=${sandboxDir.absolutePath}",
                                     "-Didea.config.path=${sandboxDir.absolutePath}/config",
                                     "-Didea.tooling.debug=true",
+                                    "-Dfus.internal.test.mode=true",
                                     "-Dapple.laf.useScreenMenuBar=true",
                                     "-Dapple.awt.graphics.UseQuartz=true",
                                     "-Dsun.io.useCanonCaches=false",
                                     "-Dplugin.path=${pluginDir.absolutePath}",
-                                    "-Didea.ProcessCanceledException=${if (disableProcessCanceledException) "disabled" else "enabled"}"
+                                    "-Didea.ProcessCanceledException=${if (disableProcessCanceledException) "disabled" else "enabled"}",
+                                    if (useAndroidStudio) "-Didea.platform.prefix=AndroidStudio" else ""
                                 ).joinToString(" ")
                             }
                         }
@@ -418,13 +444,25 @@ fun NamedDomainObjectContainer<TopLevelArtifact>.jarFromProject(project: Project
 fun RecursiveArtifact.archiveFromProject(project: Project, name: String? = null, configureAction: RecursiveArtifact.() -> Unit = {}) {
     val jarName = name ?: project.name + ".jar"
     archive(jarName) {
-        (project.tasks["jar"] as? Jar)?.let { jar ->
-            val manifestPath = jar.temporaryDir.resolve("MANIFEST.MF")
-            jar.manifest.writeTo(manifestPath)
-            directory("META-INF") {
-                file(manifestPath)
+
+        var foundManifest = false
+        fun extractManifest(jar: Jar) {
+            if (jar.enabled && !foundManifest) {
+                val manifestPath = jar.temporaryDir.resolve("MANIFEST.MF")
+                jar.manifest.writeTo(manifestPath)
+                directory("META-INF") {
+                    file(manifestPath)
+                }
+                foundManifest = true
             }
         }
+
+
+        (project.tasks.findByName("modularJar") as? Jar)?.let(::extractManifest)
+        (project.tasks.findByName("resultJar") as? Jar)?.let(::extractManifest)
+        (project.tasks["jar"] as? Jar)?.let(::extractManifest)
+
+        if (!foundManifest) error("No manifest found for jar: $jarName in ${project.name}")
 
         if (project.sourceSets.names.contains("main")) {
             moduleOutput(moduleName(project.path))

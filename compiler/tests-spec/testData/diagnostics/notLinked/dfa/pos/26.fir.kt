@@ -3,15 +3,6 @@
 // SKIP_TXT
 
 /*
- * KOTLIN DIAGNOSTICS NOT LINKED SPEC TEST (POSITIVE)
- *
- * SECTIONS: dfa
- * NUMBER: 26
- * DESCRIPTION: Raw data flow analysis test
- * HELPERS: classes, objects, typealiases, enumClasses, interfaces, sealedClasses
- */
-
-/*
  * TESTCASE NUMBER: 1
  * UNEXPECTED BEHAVIOUR
  */
@@ -26,7 +17,7 @@ open class Case1<K : Number> {
                     <!DEBUG_INFO_EXPRESSION_TYPE("M & L & K & T!! & kotlin.Any?")!>x<!>
                     <!DEBUG_INFO_EXPRESSION_TYPE("M & L & K & T!! & kotlin.Any?")!>x<!>.toByte()
                     <!DEBUG_INFO_EXPRESSION_TYPE("M & L & K & T!! & kotlin.Any?")!>x<!>.length
-                    <!DEBUG_INFO_EXPRESSION_TYPE("M & L & K & T!! & kotlin.Any?")!>x<!>.<!AMBIGUITY!>get<!>(0)
+                    <!DEBUG_INFO_EXPRESSION_TYPE("M & L & K & T!! & kotlin.Any?")!>x<!>.get(0)
                     <!DEBUG_INFO_EXPRESSION_TYPE("M & L & K & T!! & kotlin.Any?")!>x<!>.size
                     <!DEBUG_INFO_EXPRESSION_TYPE("M & L & K & T!! & kotlin.Any?")!>x<!>.isEmpty()
                     <!DEBUG_INFO_EXPRESSION_TYPE("M & L & K & T!! & kotlin.Any?")!>x<!>[null]

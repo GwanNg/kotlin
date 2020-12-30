@@ -35,7 +35,7 @@ import org.jetbrains.kotlin.analyzer.ResolverForProject.Companion.resolverForMod
 import org.jetbrains.kotlin.analyzer.ResolverForProject.Companion.resolverForScriptDependenciesName
 import org.jetbrains.kotlin.analyzer.ResolverForProject.Companion.resolverForSdkName
 import org.jetbrains.kotlin.analyzer.ResolverForProject.Companion.resolverForSpecialInfoName
-import org.jetbrains.kotlin.builtins.KotlinBuiltIns
+import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.caches.resolve.KotlinCacheService
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.context.GlobalContext
@@ -127,7 +127,7 @@ class KotlinCacheServiceImpl(val project: Project) : KotlinCacheService {
                 it.containingKtFile ?: throw IllegalStateException("containingKtFile was null for $it of ${it.javaClass}")
             } catch (e: Exception) {
                 if (e is ControlFlowException) throw e
-                throw KotlinExceptionWithAttachments("Couldn't get containingKtFile for ktElement")
+                throw KotlinExceptionWithAttachments("Couldn't get containingKtFile for ktElement", e)
                     .withAttachment("element.kt", it.text)
             }
         }
@@ -518,7 +518,7 @@ class KotlinCacheServiceImpl(val project: Project) : KotlinCacheService {
     }
 
     private companion object {
-        private val SUPPRESS_ANNOTATION_SHORT_NAME = KotlinBuiltIns.FQ_NAMES.suppress.shortName().identifier
+        private val SUPPRESS_ANNOTATION_SHORT_NAME = StandardNames.FqNames.suppress.shortName().identifier
     }
 }
 

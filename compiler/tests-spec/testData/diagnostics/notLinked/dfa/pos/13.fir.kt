@@ -2,22 +2,13 @@
 // !DIAGNOSTICS: -UNUSED_EXPRESSION
 // SKIP_TXT
 
-/*
- * KOTLIN DIAGNOSTICS NOT LINKED SPEC TEST (POSITIVE)
- *
- * SECTIONS: dfa
- * NUMBER: 13
- * DESCRIPTION: Raw data flow analysis test
- * HELPERS: classes, interfaces, properties, functions
- */
-
 // TESTCASE NUMBER: 1
 fun <T> case_1(x: T) {
     var y = null
 
     if (y != x) {
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>
-        <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.equals(null)
+        <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.<!INAPPLICABLE_CANDIDATE!>equals<!>(null)
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.propT
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.<!INAPPLICABLE_CANDIDATE!>propAny<!>
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.propNullableT
@@ -26,7 +17,7 @@ fun <T> case_1(x: T) {
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.<!INAPPLICABLE_CANDIDATE!>funAny<!>()
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.funNullableT()
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.funNullableAny()
-        <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.apply { equals(null) }
+        <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.apply { <!INAPPLICABLE_CANDIDATE!>equals<!>(null) }
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.apply { propT }
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.apply { <!INAPPLICABLE_CANDIDATE!>propAny<!> }
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.apply { propNullableT }
@@ -34,8 +25,8 @@ fun <T> case_1(x: T) {
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.apply { funT() }
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.apply { <!INAPPLICABLE_CANDIDATE!>funAny<!>() }
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.apply { funNullableT() }
-        <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.apply { funNullableAny(); <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.equals(null) }
-        <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.also { <!DEBUG_INFO_EXPRESSION_TYPE("T")!>it<!>.equals(null) }
+        <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.apply { funNullableAny(); <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.<!INAPPLICABLE_CANDIDATE!>equals<!>(null) }
+        <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.also { <!DEBUG_INFO_EXPRESSION_TYPE("T")!>it<!>.<!INAPPLICABLE_CANDIDATE!>equals<!>(null) }
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.also { <!DEBUG_INFO_EXPRESSION_TYPE("T")!>it<!>.propT }
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.also { <!DEBUG_INFO_EXPRESSION_TYPE("T")!>it<!>.<!INAPPLICABLE_CANDIDATE!>propAny<!> }
         <!DEBUG_INFO_EXPRESSION_TYPE("T")!>x<!>.also { <!DEBUG_INFO_EXPRESSION_TYPE("T")!>it<!>.propNullableT }
@@ -60,7 +51,7 @@ fun <T> case_2(x: T?, y: Nothing?) {
         <!DEBUG_INFO_EXPRESSION_TYPE("T?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>funAny<!>()
         <!DEBUG_INFO_EXPRESSION_TYPE("T?")!>x<!>.funNullableT()
         <!DEBUG_INFO_EXPRESSION_TYPE("T?")!>x<!>.funNullableAny()
-        <!DEBUG_INFO_EXPRESSION_TYPE("T?")!>x<!>.apply { equals(null) }
+        <!DEBUG_INFO_EXPRESSION_TYPE("T?")!>x<!>.apply { <!INAPPLICABLE_CANDIDATE!>equals<!>(null) }
         <!DEBUG_INFO_EXPRESSION_TYPE("T?")!>x<!>.apply { propT }
         <!DEBUG_INFO_EXPRESSION_TYPE("T?")!>x<!>.apply { <!INAPPLICABLE_CANDIDATE!>propAny<!> }
         <!DEBUG_INFO_EXPRESSION_TYPE("T?")!>x<!>.apply { propNullableT }
@@ -4314,31 +4305,31 @@ class Case61_3<T>: InterfaceWithTypeParameter1<T>, Case61_1<T>, Case61_2<T> {
 
 fun <T> T.case_61(x: T) where T : InterfaceWithTypeParameter1<T>?, T: Case61_3<T>?, T: Case61_1<T>?, T: Case61_2<T>? {
     if (x != null) {
-        <!DEBUG_INFO_EXPRESSION_TYPE("T!! & T")!>x<!>.<!AMBIGUITY!>ip1test1<!>()
-        <!DEBUG_INFO_EXPRESSION_TYPE("T!! & T")!>x<!>.<!AMBIGUITY!>test2<!>()
-        <!DEBUG_INFO_EXPRESSION_TYPE("T!! & T")!>x<!>.<!AMBIGUITY!>ip1test1<!>()
+        <!DEBUG_INFO_EXPRESSION_TYPE("T!! & T")!>x<!>.ip1test1()
+        <!DEBUG_INFO_EXPRESSION_TYPE("T!! & T")!>x<!>.test2()
+        <!DEBUG_INFO_EXPRESSION_TYPE("T!! & T")!>x<!>.ip1test1()
         <!DEBUG_INFO_EXPRESSION_TYPE("T!! & T")!>x<!>.test4()
 
-        x.<!AMBIGUITY!>ip1test1<!>()
-        x.<!AMBIGUITY!>test2<!>()
-        x.<!AMBIGUITY!>ip1test1<!>()
+        x.ip1test1()
+        x.test2()
+        x.ip1test1()
         x.test4()
         x.apply {
             <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>this<!>
-            <!AMBIGUITY!>ip1test1<!>()
-            <!AMBIGUITY!>test2<!>()
-            <!AMBIGUITY!>ip1test1<!>()
+            ip1test1()
+            test2()
+            ip1test1()
             test4()
-            <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>this<!>.<!AMBIGUITY!>ip1test1<!>()
-            <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>this<!>.<!AMBIGUITY!>test2<!>()
-            <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>this<!>.<!AMBIGUITY!>ip1test1<!>()
+            <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>this<!>.ip1test1()
+            <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>this<!>.test2()
+            <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>this<!>.ip1test1()
             <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>this<!>.test4()
         }
         x.also {
             <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>it<!>
-            <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>it<!>.<!AMBIGUITY!>ip1test1<!>()
-            <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>it<!>.<!AMBIGUITY!>test2<!>()
-            <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>it<!>.<!AMBIGUITY!>ip1test1<!>()
+            <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>it<!>.ip1test1()
+            <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>it<!>.test2()
+            <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>it<!>.ip1test1()
             <!DEBUG_INFO_EXPRESSION_TYPE("T!!")!>it<!>.test4()
         }
     }

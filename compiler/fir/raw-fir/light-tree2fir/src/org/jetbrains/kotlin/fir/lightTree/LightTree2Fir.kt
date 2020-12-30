@@ -11,18 +11,18 @@ import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.CharsetToolkit
 import com.intellij.util.diff.FlyweightCapableTreeStructure
 import org.jetbrains.kotlin.fir.FirSession
-import org.jetbrains.kotlin.fir.FirSessionBase
+import org.jetbrains.kotlin.fir.PrivateSessionConstructor
 import org.jetbrains.kotlin.fir.declarations.FirFile
 import org.jetbrains.kotlin.fir.lightTree.converter.DeclarationsConverter
 import org.jetbrains.kotlin.fir.scopes.FirScopeProvider
 import org.jetbrains.kotlin.lexer.KotlinLexer
-import org.jetbrains.kotlin.parsing.KotlinParserDefinition
 import org.jetbrains.kotlin.parsing.KotlinLightParser
+import org.jetbrains.kotlin.parsing.KotlinParserDefinition
 import java.io.File
 import java.nio.file.Path
 
 class LightTree2Fir(
-    val session: FirSession = object : FirSessionBase(null) {},
+    val session: FirSession,
     private val scopeProvider: FirScopeProvider,
     private val stubMode: Boolean = false
 ) {
@@ -52,7 +52,7 @@ class LightTree2Fir(
     }
 
     fun buildFirFile(file: File): FirFile {
-        val code = FileUtil.loadFile(file, CharsetToolkit.UTF8, true).trim()
+        val code = FileUtil.loadFile(file, CharsetToolkit.UTF8, true)
         return buildFirFile(code, file.name)
     }
 
@@ -67,8 +67,6 @@ class LightTree2Fir(
         val lightTree = buildLightTree(code)
 
         return DeclarationsConverter(session, scopeProvider, stubMode, lightTree)
-            .convertFile(lightTree.root, fileName).also {
-                it
-            }
+            .convertFile(lightTree.root, fileName)
     }
 }

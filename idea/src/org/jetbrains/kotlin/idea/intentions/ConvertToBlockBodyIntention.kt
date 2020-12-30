@@ -18,8 +18,10 @@ import org.jetbrains.kotlin.psi.psiUtil.endOffset
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
 import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.isError
+import org.jetbrains.kotlin.types.isNullabilityFlexible
 import org.jetbrains.kotlin.types.typeUtil.isNothing
 import org.jetbrains.kotlin.types.typeUtil.isUnit
+import org.jetbrains.kotlin.types.typeUtil.makeNotNullable
 
 class ConvertToBlockBodyIntention : SelfTargetingIntention<KtDeclarationWithBody>(
     KtDeclarationWithBody::class.java,
@@ -44,11 +46,11 @@ class ConvertToBlockBodyIntention : SelfTargetingIntention<KtDeclarationWithBody
     override fun allowCaretInsideElement(element: PsiElement) = element !is KtDeclaration && super.allowCaretInsideElement(element)
 
     override fun applyTo(element: KtDeclarationWithBody, editor: Editor?) {
-        convert(element)
+        convert(element, true)
     }
 
     companion object {
-        fun convert(declaration: KtDeclarationWithBody): KtDeclarationWithBody {
+        fun convert(declaration: KtDeclarationWithBody, withReformat: Boolean = false): KtDeclarationWithBody {
             val body = declaration.bodyExpression!!
 
             fun generateBody(returnsValue: Boolean): KtExpression {
@@ -56,10 +58,20 @@ class ConvertToBlockBodyIntention : SelfTargetingIntention<KtDeclarationWithBody
                 val factory = KtPsiFactory(declaration)
                 if (bodyType != null && bodyType.isUnit() && body is KtNameReferenceExpression) return factory.createEmptyBody()
                 val unitWhenAsResult = (bodyType == null || bodyType.isUnit()) && body.resultingWhens().isNotEmpty()
-                val needReturn = returnsValue &&
-                        (bodyType == null || (!bodyType.isUnit() && !bodyType.isNothing()))
-                val statement = if (needReturn || unitWhenAsResult) factory.createExpressionByPattern("return $0", body) else body
-                return factory.createSingleStatementBlock(statement)
+                val needReturn = returnsValue && (bodyType == null || (!bodyType.isUnit() && !bodyType.isNothing()))
+                return if (needReturn || unitWhenAsResult) {
+                    val annotatedExpr = body as? KtAnnotatedExpression
+                    val returnedExpr = annotatedExpr?.baseExpression ?: body
+                    val block = factory.createSingleStatementBlock(factory.createExpressionByPattern("return $0", returnedExpr))
+                    val statement = block.firstStatement
+                    annotatedExpr?.annotationEntries?.forEach {
+                        block.addBefore(it, statement)
+                        block.addBefore(factory.createNewLine(), statement)
+                    }
+                    block
+                } else {
+                    factory.createSingleStatementBlock(body)
+                }
             }
 
             val newBody = when (declaration) {
@@ -86,13 +98,17 @@ class ConvertToBlockBodyIntention : SelfTargetingIntention<KtDeclarationWithBody
 
             declaration.equalsToken!!.delete()
             val replaced = body.replace(newBody)
-            declaration.containingKtFile.adjustLineIndent(replaced.startOffset, replaced.endOffset)
+            if (withReformat) declaration.containingKtFile.adjustLineIndent(replaced.startOffset, replaced.endOffset)
             return declaration
         }
 
         private fun KtNamedFunction.returnType(): KotlinType? {
-            val descriptor = resolveToDescriptorIfAny() ?: return null
-            return descriptor.returnType
+            val descriptor = resolveToDescriptorIfAny()
+            val returnType = descriptor?.returnType ?: return null
+            if (returnType.isNullabilityFlexible()
+                && descriptor.overriddenDescriptors.firstOrNull()?.returnType?.isMarkedNullable == false
+            ) return returnType.makeNotNullable()
+            return returnType
         }
     }
 }

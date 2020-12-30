@@ -8,40 +8,45 @@ package org.jetbrains.kotlin.backend.jvm.ir
 import org.jetbrains.kotlin.backend.common.ir.ir2string
 import org.jetbrains.kotlin.backend.common.lower.IrLoweringContext
 import org.jetbrains.kotlin.backend.jvm.JvmBackendContext
+import org.jetbrains.kotlin.backend.jvm.JvmCachedDeclarations
 import org.jetbrains.kotlin.backend.jvm.JvmLoweredDeclarationOrigin
 import org.jetbrains.kotlin.backend.jvm.JvmSymbols
 import org.jetbrains.kotlin.backend.jvm.codegen.isInlineOnly
 import org.jetbrains.kotlin.backend.jvm.codegen.isJvmInterface
-import org.jetbrains.kotlin.backend.jvm.descriptors.JvmDeclarationFactory
 import org.jetbrains.kotlin.backend.jvm.lower.inlineclasses.unboxInlineClass
-import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.codegen.inline.coroutines.FOR_INLINE_SUFFIX
 import org.jetbrains.kotlin.config.JvmDefaultMode
+import org.jetbrains.kotlin.descriptors.ClassKind
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.descriptors.Modality
-import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.descriptors.deserialization.PLATFORM_DEPENDENT_ANNOTATION_FQ_NAME
+import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
 import org.jetbrains.kotlin.ir.builders.IrBuilderWithScope
 import org.jetbrains.kotlin.ir.builders.Scope
+import org.jetbrains.kotlin.ir.builders.declarations.buildProperty
 import org.jetbrains.kotlin.ir.declarations.*
+import org.jetbrains.kotlin.ir.declarations.lazy.IrLazyClass
 import org.jetbrains.kotlin.ir.descriptors.IrBuiltIns
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.expressions.impl.IrCallImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
+import org.jetbrains.kotlin.ir.expressions.impl.IrConstructorCallImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrGetFieldImpl
 import org.jetbrains.kotlin.ir.symbols.*
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.types.impl.IrSimpleTypeImpl
 import org.jetbrains.kotlin.ir.types.impl.IrStarProjectionImpl
 import org.jetbrains.kotlin.ir.types.impl.makeTypeProjection
-import org.jetbrains.kotlin.ir.types.impl.originalKotlinType
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformerVoid
-import org.jetbrains.kotlin.load.java.JavaVisibilities
+import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
+import org.jetbrains.kotlin.load.java.JavaDescriptorVisibilities
+import org.jetbrains.kotlin.load.java.JvmAbi
 import org.jetbrains.kotlin.metadata.jvm.deserialization.JvmProtoBufUtil
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.jvm.annotations.JVM_DEFAULT_FQ_NAME
-import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedClassDescriptor
+import org.jetbrains.kotlin.resolve.jvm.annotations.JVM_DEFAULT_NO_COMPATIBILITY_FQ_NAME
 
 /**
  * Perform as much type erasure as is significant for JVM signature generation.
@@ -60,7 +65,6 @@ fun IrType.eraseTypeParameters() = when (this) {
     is IrSimpleType ->
         when (val owner = classifier.owner) {
             is IrClass -> IrSimpleTypeImpl(
-                originalKotlinType,
                 classifier,
                 hasQuestionMark,
                 arguments.map { it.eraseTypeParameters() },
@@ -123,7 +127,7 @@ fun IrType.defaultValue(startOffset: Int, endOffset: Int, context: JvmBackendCon
 
     val underlyingType = unboxInlineClass()
     val defaultValueForUnderlyingType = IrConstImpl.defaultValueForType(startOffset, endOffset, underlyingType)
-    return IrCallImpl(startOffset, endOffset, this, context.ir.symbols.unsafeCoerceIntrinsic).also {
+    return IrCallImpl.fromSymbolOwner(startOffset, endOffset, this, context.ir.symbols.unsafeCoerceIntrinsic).also {
         it.putTypeArgument(0, underlyingType) // from
         it.putTypeArgument(1, this) // to
         it.putValueArgument(0, defaultValueForUnderlyingType)
@@ -153,35 +157,27 @@ fun IrSimpleFunction.isCompiledToJvmDefault(jvmDefaultMode: JvmDefaultMode): Boo
     assert(!isFakeOverride && parentAsClass.isInterface && modality != Modality.ABSTRACT) {
         "`isCompiledToJvmDefault` should be called on non-fakeoverrides and non-abstract methods from interfaces ${ir2string(this)}"
     }
+    if (origin == IrDeclarationOrigin.IR_EXTERNAL_JAVA_DECLARATION_STUB) return false
     if (hasJvmDefault()) return true
-    val parentDescriptor = propertyIfAccessor.parentAsClass.descriptor
-    if (parentDescriptor !is DeserializedClassDescriptor) return jvmDefaultMode.forAllMethodsWithBody
-    return JvmProtoBufUtil.isNewPlaceForBodyGeneration(parentDescriptor.classProto)
+    (parentAsClass as? IrLazyClass)?.classProto?.let {
+        return JvmProtoBufUtil.isNewPlaceForBodyGeneration(it)
+    }
+    return jvmDefaultMode.forAllMethodsWithBody
 }
 
 fun IrFunction.hasJvmDefault(): Boolean = propertyIfAccessor.hasAnnotation(JVM_DEFAULT_FQ_NAME)
+fun IrClass.hasJvmDefaultNoCompatibilityAnnotation(): Boolean = hasAnnotation(JVM_DEFAULT_NO_COMPATIBILITY_FQ_NAME)
 fun IrFunction.hasPlatformDependent(): Boolean = propertyIfAccessor.hasAnnotation(PLATFORM_DEPENDENT_ANNOTATION_FQ_NAME)
 
 fun IrFunction.getJvmVisibilityOfDefaultArgumentStub() =
-    if (Visibilities.isPrivate(visibility) || isInlineOnly()) JavaVisibilities.PACKAGE_VISIBILITY else Visibilities.PUBLIC
+    if (DescriptorVisibilities.isPrivate(visibility) || isInlineOnly()) JavaDescriptorVisibilities.PACKAGE_VISIBILITY else DescriptorVisibilities.PUBLIC
 
-fun IrValueParameter.isInlineParameter(type: IrType = this.type) =
-    index >= 0 && !isNoinline && !type.isNullable() && (type.isFunction() || type.isSuspendFunctionTypeOrSubtype())
-
-val IrType.isBoxedArray: Boolean
-    get() = classOrNull?.owner?.fqNameWhenAvailable == KotlinBuiltIns.FQ_NAMES.array.toSafe()
-
-fun IrType.getArrayElementType(irBuiltIns: IrBuiltIns): IrType =
-    if (isBoxedArray)
-        ((this as IrSimpleType).arguments.single() as IrTypeProjection).type
-    else {
-        val classifier = this.classOrNull!!
-        irBuiltIns.primitiveArrayElementTypes[classifier]
-            ?: throw AssertionError("Primitive array expected: $classifier")
-    }
-
-val IrStatementOrigin?.isLambda: Boolean
-    get() = this == IrStatementOrigin.LAMBDA || this == IrStatementOrigin.ANONYMOUS_FUNCTION
+fun IrValueParameter.isInlineParameter() =
+    index >= 0 && !isNoinline && (type.isFunction() || type.isSuspendFunctionTypeOrSubtype()) &&
+            // Parameters with default values are always nullable, so check the expression too.
+            // Note that the frontend has a diagnostic for nullable inline parameters, so actually
+            // making this return `false` requires using `@Suppress`.
+            (!type.isNullable() || defaultValue?.expression?.type?.isNullable() == false)
 
 // An IR builder with a reference to the JvmBackendContext
 class JvmIrBuilder(
@@ -229,25 +225,23 @@ fun IrExpression.isSmartcastFromHigherThanNullable(context: JvmBackendContext): 
     }
 }
 
-fun IrBody.replaceThisByStaticReference(
-    declarationFactory: JvmDeclarationFactory,
+fun IrElement.replaceThisByStaticReference(
+    cachedDeclarations: JvmCachedDeclarations,
     irClass: IrClass,
     oldThisReceiverParameter: IrValueParameter
-): IrBody =
-    transform(object : IrElementTransformerVoid() {
-        override fun visitGetValue(expression: IrGetValue): IrExpression {
+) {
+    transformChildrenVoid(object : IrElementTransformerVoid() {
+        override fun visitGetValue(expression: IrGetValue): IrExpression =
             if (expression.symbol == oldThisReceiverParameter.symbol) {
-                val instanceField = declarationFactory.getPrivateFieldForObjectInstance(irClass)
-                return IrGetFieldImpl(
+                IrGetFieldImpl(
                     expression.startOffset,
                     expression.endOffset,
-                    instanceField.symbol,
+                    cachedDeclarations.getPrivateFieldForObjectInstance(irClass).symbol,
                     irClass.defaultType
                 )
-            }
-            return super.visitGetValue(expression)
-        }
-    }, null)
+            } else super.visitGetValue(expression)
+    })
+}
 
 // TODO: Interface Parameters
 //
@@ -270,7 +264,11 @@ fun IrBody.replaceThisByStaticReference(
 fun createPlaceholderAnyNType(irBuiltIns: IrBuiltIns): IrType =
     irBuiltIns.anyNType
 
-fun createDelegatingCallWithPlaceholderTypeArguments(existingCall: IrCall, redirectTarget: IrFunction, irBuiltIns: IrBuiltIns): IrCall =
+fun createDelegatingCallWithPlaceholderTypeArguments(
+    existingCall: IrCall,
+    redirectTarget: IrSimpleFunction,
+    irBuiltIns: IrBuiltIns
+): IrCall =
     IrCallImpl(
         existingCall.startOffset,
         existingCall.endOffset,
@@ -283,14 +281,10 @@ fun createDelegatingCallWithPlaceholderTypeArguments(existingCall: IrCall, redir
         copyFromWithPlaceholderTypeArguments(existingCall, irBuiltIns)
     }
 
-fun IrFunctionAccessExpression.copyFromWithPlaceholderTypeArguments(existingCall: IrFunctionAccessExpression, irBuiltIns: IrBuiltIns) {
-    copyValueArgumentsFrom(
-        existingCall,
-        existingCall.symbol.owner,
-        this.symbol.owner,
-        receiversAsArguments = true,
-        argumentsAsReceivers = false,
-    )
+fun IrMemberAccessExpression<IrFunctionSymbol>.copyFromWithPlaceholderTypeArguments(
+    existingCall: IrMemberAccessExpression<IrFunctionSymbol>, irBuiltIns: IrBuiltIns
+) {
+    copyValueArgumentsFrom(existingCall, this.symbol.owner, receiversAsArguments = true, argumentsAsReceivers = false)
     var offset = 0
     existingCall.symbol.owner.parentAsClass.typeParameters.forEach { _ ->
         putTypeArgument(offset++, createPlaceholderAnyNType(irBuiltIns))
@@ -314,8 +308,84 @@ fun firstSuperMethodFromKotlin(
     override: IrSimpleFunction,
     implementation: IrSimpleFunction
 ): IrSimpleFunctionSymbol {
-    return override.overriddenSymbols.first {
+    return override.overriddenSymbols.firstOrNull {
         val owner = it.owner
         owner.modality != Modality.ABSTRACT && owner.overrides(implementation)
+    } ?: error("No super method found for: ${override.render()}")
+}
+
+// MethodSignatureMapper uses the corresponding property of a function to determine correct names
+// for property accessors.
+fun IrSimpleFunction.copyCorrespondingPropertyFrom(source: IrSimpleFunction) {
+    val property = source.correspondingPropertySymbol?.owner ?: return
+    val target = this
+
+    correspondingPropertySymbol = factory.buildProperty {
+        name = property.name
+        updateFrom(property)
+    }.apply {
+        parent = target.parent
+        annotations = property.annotations
+        when {
+            source.isGetter -> getter = target
+            source.isSetter -> setter = target
+            else -> error("Orphaned property getter/setter: ${source.render()}")
+        }
+    }.symbol
+}
+
+fun IrProperty.needsAccessor(accessor: IrSimpleFunction): Boolean = when {
+    // Properties in annotation classes become abstract methods named after the property.
+    (parent as? IrClass)?.kind == ClassKind.ANNOTATION_CLASS -> true
+    // @JvmField properties have no getters/setters
+    resolveFakeOverride()?.backingField?.hasAnnotation(JvmAbi.JVM_FIELD_ANNOTATION_FQ_NAME) == true -> false
+    // We do not produce default accessors for private fields
+    else -> accessor.origin != IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR || !DescriptorVisibilities.isPrivate(accessor.visibility)
+}
+
+val IrDeclaration.isStaticInlineClassReplacement: Boolean
+    get() = origin == JvmLoweredDeclarationOrigin.STATIC_INLINE_CLASS_REPLACEMENT
+            || origin == JvmLoweredDeclarationOrigin.STATIC_INLINE_CLASS_CONSTRUCTOR
+
+fun IrDeclaration.isFromJava(): Boolean =
+    origin == IrDeclarationOrigin.IR_EXTERNAL_JAVA_DECLARATION_STUB ||
+            parent is IrDeclaration && (parent as IrDeclaration).isFromJava()
+
+val IrType.upperBound: IrType
+    get() = erasedUpperBound.symbol.starProjectedType
+
+fun IrType.eraseToScope(scopeOwner: IrTypeParametersContainer): IrType = eraseToScope(collectVisibleTypeParameters(scopeOwner))
+
+fun IrType.eraseToScope(visibleTypeParameters: Set<IrTypeParameter>): IrType {
+    require(this is IrSimpleType) { error("Unexpected IrType kind: ${render()}") }
+    return when (classifier) {
+        is IrClassSymbol -> IrSimpleTypeImpl(classifier, hasQuestionMark, arguments.map { it.eraseToScope(visibleTypeParameters) }, annotations)
+        is IrTypeParameterSymbol -> if (classifier.owner in visibleTypeParameters) this else upperBound
+        else -> error("unknown IrType classifier kind: ${classifier.owner.render()}")
     }
 }
+
+private fun IrTypeArgument.eraseToScope(visibleTypeParameters: Set<IrTypeParameter>): IrTypeArgument = when (this) {
+    is IrStarProjection -> this
+    is IrTypeProjection -> makeTypeProjection(type.eraseToScope(visibleTypeParameters), variance)
+    else -> error("unknown type projection kind: ${render()}")
+}
+
+fun collectVisibleTypeParameters(scopeOwner: IrTypeParametersContainer): Set<IrTypeParameter> =
+    generateSequence(scopeOwner) { current ->
+        val parent = current.parent as? IrTypeParametersContainer
+        parent.takeUnless { parent is IrClass && current is IrClass && !current.isInner && !current.isLocal }
+    }
+        .flatMap { it.typeParameters }
+        .toSet()
+
+// On the IR backend we represent raw types as star projected types with a special synthetic annotation.
+// See `TypeTranslator.translateTypeAnnotations`.
+private fun JvmBackendContext.makeRawTypeAnnotation() =
+    IrConstructorCallImpl.fromSymbolOwner(
+        generatorExtensions.rawTypeAnnotationConstructor!!.constructedClassType,
+        generatorExtensions.rawTypeAnnotationConstructor.symbol
+    )
+
+fun IrClass.rawType(context: JvmBackendContext): IrType =
+    defaultType.addAnnotations(listOf(context.makeRawTypeAnnotation()))

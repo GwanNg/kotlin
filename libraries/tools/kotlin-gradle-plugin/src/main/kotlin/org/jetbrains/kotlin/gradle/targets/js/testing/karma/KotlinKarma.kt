@@ -52,11 +52,20 @@ class KotlinKarma(override val compilation: KotlinJsCompilation) :
         project.projectDir.resolve("karma.config.d")
     }
 
-    override val requiredNpmDependencies: Collection<RequiredKotlinJsDependency>
-        get() = requiredDependencies.toList()
+    override val requiredNpmDependencies: Set<RequiredKotlinJsDependency>
+        get() = requiredDependencies + webpackConfig.getRequiredDependencies(versions)
 
     override val settingsState: String
         get() = "KotlinKarma($config)"
+
+    val webpackConfig = KotlinWebpackConfig(
+        configDirectory = project.projectDir.resolve("webpack.config.d"),
+        sourceMaps = true,
+        devtool = null,
+        export = false,
+        progressReporter = true,
+        progressReporterPathFilter = nodeJs.rootPackageDir.absolutePath
+    )
 
     init {
         requiredDependencies.add(versions.kotlinJsTestRunner)
@@ -130,7 +139,7 @@ class KotlinKarma(override val compilation: KotlinJsCompilation) :
         useChromeLike(debuggableChrome)
     }
 
-    fun usePhantomJS() = useBrowser("PhantomJS", versions.karmaPhantomJsLauncher)
+    fun usePhantomJS() = useBrowser("PhantomJS", versions.karmaPhantomjsLauncher)
 
     private fun useFirefoxLike(id: String) = useBrowser(id, versions.karmaFirefoxLauncher)
 
@@ -175,23 +184,13 @@ class KotlinKarma(override val compilation: KotlinJsCompilation) :
         requiredDependencies.add(versions.karmaWebpack)
         requiredDependencies.add(versions.webpack)
 
-        val webpackConfigWriter = KotlinWebpackConfig(
-            configDirectory = project.projectDir.resolve("webpack.config.d"),
-            sourceMaps = true,
-            devtool = null,
-            export = false,
-            progressReporter = true,
-            progressReporterPathFilter = nodeJs.rootPackageDir.absolutePath
-        )
-        requiredDependencies.addAll(webpackConfigWriter.getRequiredDependencies(versions))
-
         addPreprocessor("webpack")
         confJsWriters.add {
             it.appendln()
             it.appendln("// webpack config")
             it.appendln("function createWebpackConfig() {")
 
-            webpackConfigWriter.appendTo(it)
+            webpackConfig.appendTo(it)
             //language=ES6
             it.appendln(
                 """
@@ -214,7 +213,6 @@ class KotlinKarma(override val compilation: KotlinJsCompilation) :
 
         requiredDependencies.add(versions.webpack)
         requiredDependencies.add(versions.webpackCli)
-        requiredDependencies.add(versions.kotlinSourceMapLoader)
         requiredDependencies.add(versions.sourceMapLoader)
     }
 
@@ -257,7 +255,7 @@ class KotlinKarma(override val compilation: KotlinJsCompilation) :
     }
 
     fun useSourceMapSupport() {
-        requiredDependencies.add(versions.karmaSourceMapLoader)
+        requiredDependencies.add(versions.karmaSourcemapLoader)
         sourceMaps = true
         addPreprocessor("sourcemap")
     }

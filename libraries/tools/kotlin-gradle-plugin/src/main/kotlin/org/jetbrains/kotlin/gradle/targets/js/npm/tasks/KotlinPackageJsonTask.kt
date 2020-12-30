@@ -7,21 +7,23 @@ package org.jetbrains.kotlin.gradle.targets.js.npm.tasks
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.plugins.BasePlugin
-import org.gradle.api.tasks.Nested
-import org.gradle.api.tasks.OutputFile
-import org.gradle.api.tasks.TaskAction
-import org.gradle.api.tasks.TaskProvider
+import org.gradle.api.tasks.*
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinJsCompilation
 import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootExtension
 import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootPlugin
+import org.jetbrains.kotlin.gradle.targets.js.npm.PackageJson
+import org.jetbrains.kotlin.gradle.targets.js.npm.fakePackageJsonValue
 import org.jetbrains.kotlin.gradle.targets.js.npm.npmProject
 import org.jetbrains.kotlin.gradle.targets.js.npm.resolver.KotlinCompilationNpmResolver
 import org.jetbrains.kotlin.gradle.targets.js.npm.resolver.PACKAGE_JSON_UMBRELLA_TASK_NAME
+import org.jetbrains.kotlin.gradle.tasks.dependsOn
 import org.jetbrains.kotlin.gradle.tasks.registerTask
 import java.io.File
 
 open class KotlinPackageJsonTask : DefaultTask() {
     private lateinit var nodeJs: NodeJsRootExtension
+
+    @Transient
     private lateinit var compilation: KotlinJsCompilation
 
     private val compilationResolver
@@ -30,6 +32,14 @@ open class KotlinPackageJsonTask : DefaultTask() {
     private val producer: KotlinCompilationNpmResolver.PackageJsonProducer
         get() = compilationResolver.packageJsonProducer
 
+    @get:Input
+    val packageJsonCustomFields: Map<String, Any?> by lazy {
+        PackageJson(fakePackageJsonValue, fakePackageJsonValue)
+            .apply {
+                compilation.packageJsonHandlers.forEach { it() }
+            }.customFields
+    }
+
     private fun findDependentTasks(): Collection<Any> =
         producer.internalDependencies.map { dependentResolver ->
             dependentResolver.npmProject.packageJsonTask
@@ -37,13 +47,22 @@ open class KotlinPackageJsonTask : DefaultTask() {
             dependency.includedBuild.task(":$PACKAGE_JSON_UMBRELLA_TASK_NAME")
         }
 
+    @get:Input
+    internal val toolsNpmDependencies: List<String> by lazy {
+        nodeJs.taskRequirements
+            .getCompilationNpmRequirements(compilation)
+            .map { it.uniqueRepresentation() }
+    }
+
     @get:Nested
-    internal val producerInputs: KotlinCompilationNpmResolver.PackageJsonProducerInputs
-        get() = producer.inputs
+    internal val producerInputs: KotlinCompilationNpmResolver.PackageJsonProducerInputs by lazy {
+        producer.inputs
+    }
 
     @get:OutputFile
-    val packageJson: File
-        get() = compilationResolver.npmProject.packageJsonFile
+    val packageJson: File by lazy {
+        compilationResolver.npmProject.prePackageJsonFile
+    }
 
     @TaskAction
     fun resolve() {
@@ -57,10 +76,10 @@ open class KotlinPackageJsonTask : DefaultTask() {
             val npmProject = compilation.npmProject
             val nodeJs = NodeJsRootPlugin.apply(project.rootProject)
 
-            val rootClean = project.rootProject.tasks.getByName(BasePlugin.CLEAN_TASK_NAME)
-            val npmInstallTask = nodeJs.npmInstallTask
+            val rootClean = project.rootProject.tasks.named(BasePlugin.CLEAN_TASK_NAME)
+            val npmInstallTask = nodeJs.npmInstallTaskProvider
             val packageJsonTaskName = npmProject.packageJsonTaskName
-            val packageJsonUmbrella = project.rootProject.tasks.named(PACKAGE_JSON_UMBRELLA_TASK_NAME)
+            val packageJsonUmbrella = nodeJs.packageJsonUmbrellaTaskProvider
             val packageJsonTask = project.registerTask<KotlinPackageJsonTask>(packageJsonTaskName) { task ->
                 task.nodeJs = nodeJs
                 task.compilation = compilation
@@ -74,12 +93,10 @@ open class KotlinPackageJsonTask : DefaultTask() {
                 task.inputs.file(packageJsonTask.map { it.packageJson })
             }
 
-            nodeJs.rootPackageJsonTask.mustRunAfter(packageJsonTask)
+            nodeJs.rootPackageJsonTaskProvider.configure { it.mustRunAfter(packageJsonTask) }
 
-            compilation.compileKotlinTask.dependsOn(
-                npmInstallTask,
-                packageJsonTask
-            )
+            compilation.compileKotlinTaskProvider.dependsOn(npmInstallTask)
+            compilation.compileKotlinTaskProvider.dependsOn(packageJsonTask)
 
             return packageJsonTask
         }

@@ -10,14 +10,20 @@ import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.container.getService
 import org.jetbrains.kotlin.descriptors.ClassDescriptorWithResolutionScopes
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor
+import org.jetbrains.kotlin.descriptors.PropertyDescriptor
+import org.jetbrains.kotlin.descriptors.ScriptDescriptor
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.resolve.calls.tower.ImplicitsExtensionsResolutionFilter
 import org.jetbrains.kotlin.resolve.diagnostics.Diagnostics
 import org.jetbrains.kotlin.resolve.lazy.declarations.FileBasedDeclarationProviderFactory
 import org.jetbrains.kotlin.scripting.compiler.plugin.repl.ReplCodeAnalyzerBase
 import org.jetbrains.kotlin.scripting.definitions.ScriptPriorities
 
-class IdeLikeReplCodeAnalyzer(private val environment: KotlinCoreEnvironment) : ReplCodeAnalyzerBase(environment, CliBindingTrace()) {
+class IdeLikeReplCodeAnalyzer(
+    private val environment: KotlinCoreEnvironment,
+    implicitsResolutionFilter: ImplicitsExtensionsResolutionFilter
+) : ReplCodeAnalyzerBase(environment, CliBindingTrace(), implicitsResolutionFilter) {
     interface ReplLineAnalysisResultWithStateless : ReplLineAnalysisResult {
         // Result of stateless analyse, which may be used for reporting errors
         // without code generation
@@ -25,7 +31,8 @@ class IdeLikeReplCodeAnalyzer(private val environment: KotlinCoreEnvironment) : 
             override val diagnostics: Diagnostics,
             val bindingContext: BindingContext,
             val resolutionFacade: KotlinResolutionFacadeForRepl,
-            val moduleDescriptor: ModuleDescriptor
+            val moduleDescriptor: ModuleDescriptor,
+            val resultProperty: PropertyDescriptor?,
         ) :
             ReplLineAnalysisResultWithStateless {
             override val scriptDescriptor: ClassDescriptorWithResolutionScopes? get() = null
@@ -51,7 +58,9 @@ class IdeLikeReplCodeAnalyzer(private val environment: KotlinCoreEnvironment) : 
         )
         replState.submitLine(linePsi)
 
-        topDownAnalyzer.analyzeDeclarations(topDownAnalysisContext.topDownAnalysisMode, listOf(linePsi) + importedScripts)
+        val context = runAnalyzer(linePsi, importedScripts)
+
+        val resultPropertyDescriptor = (context.scripts[linePsi.script] as? ScriptDescriptor)?.resultValue
 
         val moduleDescriptor = container.getService(ModuleDescriptor::class.java)
         val resolutionFacade =
@@ -61,7 +70,8 @@ class IdeLikeReplCodeAnalyzer(private val environment: KotlinCoreEnvironment) : 
             diagnostics,
             trace.bindingContext,
             resolutionFacade,
-            moduleDescriptor
+            moduleDescriptor,
+            resultPropertyDescriptor,
         )
     }
 

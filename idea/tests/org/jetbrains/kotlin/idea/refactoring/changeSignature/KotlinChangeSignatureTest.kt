@@ -5,6 +5,7 @@
 
 package org.jetbrains.kotlin.idea.refactoring.changeSignature
 
+import com.intellij.application.options.CodeStyle
 import com.intellij.codeInsight.TargetElementUtil
 import com.intellij.codeInsight.TargetElementUtil.ELEMENT_NAME_ACCEPTED
 import com.intellij.codeInsight.TargetElementUtil.REFERENCED_ELEMENT_ACCEPTED
@@ -24,7 +25,7 @@ import junit.framework.TestCase
 import org.jetbrains.kotlin.asJava.getRepresentativeLightMethod
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.builtins.DefaultBuiltIns
-import org.jetbrains.kotlin.descriptors.Visibilities
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.refactoring.changeSignature.ui.KotlinChangeSignatureDialog.Companion.getTypeCodeFragmentContext
 import org.jetbrains.kotlin.idea.refactoring.changeSignature.ui.KotlinChangeSignatureDialog.Companion.getTypeInfo
@@ -62,18 +63,23 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
 
     override fun getProjectDescriptor(): LightProjectDescriptor = KotlinWithJdkAndRuntimeLightProjectDescriptor.INSTANCE
 
+    override fun setUp() {
+        super.setUp()
+        CodeStyle.getSettings(project).clearCodeStyleSettings()
+    }
+
     override fun tearDown() {
         files = emptyList()
         psiFiles = PsiFile.EMPTY_ARRAY
         super.tearDown()
     }
 
-    lateinit var files: List<String>
-    lateinit var psiFiles: Array<PsiFile>
+    private lateinit var files: List<String>
+    private lateinit var psiFiles: Array<PsiFile>
 
     private fun findCallers(method: PsiMethod): LinkedHashSet<PsiMethod> {
-        val root = KotlinMethodNode(method, HashSet(), project, Runnable { })
-        return (0..root.childCount - 1).flatMapTo(LinkedHashSet<PsiMethod>()) {
+        val root = KotlinMethodNode(method, HashSet(), project) { }
+        return (0 until root.childCount).flatMapTo(LinkedHashSet<PsiMethod>()) {
             (root.getChildAt(it) as KotlinMethodNode).member.toLightMethods()
         }
     }
@@ -83,7 +89,7 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
         var i = 0
         indexLoop@ while (true) {
             for (extension in EXTENSIONS) {
-                val extraFileName = getTestName(false) + "Before" + (if (i > 0) "." + i else "") + extension
+                val extraFileName = getTestName(false) + "Before" + (if (i > 0) ".$i" else "") + extension
                 val extraFile = File(testDataPath + extraFileName)
                 if (extraFile.exists()) {
                     fileList.add(extraFileName)
@@ -159,7 +165,7 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
         val project = method.project
 
         var newName = method.name
-        var newReturnType = method.returnType ?: PsiType.VOID
+        var newReturnType: PsiType = method.returnType ?: PsiType.VOID
         val newParameters = ArrayList<ParameterInfoImpl>()
         val parameterPropagationTargets = LinkedHashSet<PsiMethod>()
 
@@ -271,12 +277,12 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
     }
 
     fun testChangeConstructorVisibility() {
-        doTest { newVisibility = Visibilities.PROTECTED }
+        doTest { newVisibility = DescriptorVisibilities.PROTECTED }
     }
 
     fun testAddConstructorVisibility() {
         doTest {
-            newVisibility = Visibilities.PROTECTED
+            newVisibility = DescriptorVisibilities.PROTECTED
 
             val newParameter = KotlinParameterInfo(
                 callableDescriptor = originalBaseFunctionDescriptor,
@@ -291,7 +297,7 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
 
     fun testConstructor() {
         doTest {
-            newVisibility = Visibilities.PUBLIC
+            newVisibility = DescriptorVisibilities.PUBLIC
 
             newParameters[0].valOrVar = KotlinValVar.Var
             newParameters[1].valOrVar = KotlinValVar.None
@@ -307,7 +313,7 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
 
     fun testGenericConstructor() {
         doTest {
-            newVisibility = Visibilities.PUBLIC
+            newVisibility = DescriptorVisibilities.PUBLIC
 
             newParameters[0].valOrVar = KotlinValVar.Var
             newParameters[1].valOrVar = KotlinValVar.None
@@ -332,7 +338,7 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
 
     fun testFunctions() {
         doTest {
-            newVisibility = Visibilities.PUBLIC
+            newVisibility = DescriptorVisibilities.PUBLIC
 
             newParameters[0].name = "_x1"
             newParameters[1].name = "_x2"
@@ -343,8 +349,8 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
     }
 
     fun testGenericFunctions() {
-        doTest() {
-            newVisibility = Visibilities.PUBLIC
+        doTest {
+            newVisibility = DescriptorVisibilities.PUBLIC
 
             newParameters[0].name = "_x1"
             newParameters[1].name = "_x2"
@@ -364,7 +370,7 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
 
     fun testFunctionsAddRemoveArguments() {
         doTest {
-            newVisibility = Visibilities.INTERNAL
+            newVisibility = DescriptorVisibilities.INTERNAL
 
             val defaultValueForCall = KtPsiFactory(project).createExpression("null")
             val newParameters = newParameters
@@ -557,6 +563,14 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
         }
     }
 
+    fun testJavaMethodJvmStaticKotlinUsages() {
+        doJavaTest {
+            val first = newParameters[1]
+            newParameters[1] = newParameters[0]
+            newParameters[0] = first
+        }
+    }
+
     fun testJavaConstructorKotlinUsages() {
         doJavaTest { newParameters.removeAt(1) }
     }
@@ -618,9 +632,10 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
 
     fun testFqNameShortening() {
         doTest {
-            val newParameter = KotlinParameterInfo(originalBaseFunctionDescriptor, -1, "s", KotlinTypeInfo(false, BUILT_INS.anyType)).apply {
-                currentTypeInfo = KotlinTypeInfo(false, null, "kotlin.String")
-            }
+            val newParameter =
+                KotlinParameterInfo(originalBaseFunctionDescriptor, -1, "s", KotlinTypeInfo(false, BUILT_INS.anyType)).apply {
+                    currentTypeInfo = KotlinTypeInfo(false, null, "kotlin.String")
+                }
             addParameter(newParameter)
         }
     }
@@ -801,6 +816,20 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
         }
     }
 
+    fun testPrimaryConstructorOnConstructorKeyword() = doTest {
+        val defaultValueForCall = KtPsiFactory(project).createExpression("\"foo\"")
+        addParameter(
+            KotlinParameterInfo(
+                originalBaseFunctionDescriptor,
+                -1,
+                "s",
+                KotlinTypeInfo(false, BUILT_INS.stringType),
+                null,
+                defaultValueForCall
+            )
+        )
+    }
+
     fun testJavaConstructorInDelegationCall() {
         doJavaTest { newParameters.add(ParameterInfoImpl(-1, "s", stringPsiType, "\"foo\"")) }
     }
@@ -936,7 +965,7 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
         doTest { newParameters[1].name = "b" }
     }
 
-    fun testConvertParameterToReceiverAddParens() {
+    fun testConvertParameterToReceiverAddParents() {
         doTest { receiverParameterInfo = newParameters[0] }
     }
 
@@ -1126,7 +1155,8 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
                 )
             )
 
-            primaryPropagationTargets = listOf(KotlinTopLevelFunctionFqnNameIndex.getInstance().get("bar", project, project.allScope()).first())
+            primaryPropagationTargets =
+                listOf(KotlinTopLevelFunctionFqnNameIndex.getInstance().get("bar", project, project.allScope()).first())
         }
     }
 
@@ -1144,7 +1174,8 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
                 )
             )
 
-            primaryPropagationTargets = listOf(KotlinTopLevelFunctionFqnNameIndex.getInstance().get("bar", project, project.allScope()).first())
+            primaryPropagationTargets =
+                listOf(KotlinTopLevelFunctionFqnNameIndex.getInstance().get("bar", project, project.allScope()).first())
         }
     }
 
@@ -1182,7 +1213,8 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
                 )
             )
 
-            primaryPropagationTargets = listOf(KotlinTopLevelFunctionFqnNameIndex.getInstance().get("bar", project, project.allScope()).first())
+            primaryPropagationTargets =
+                listOf(KotlinTopLevelFunctionFqnNameIndex.getInstance().get("bar", project, project.allScope()).first())
         }
     }
 
@@ -1238,11 +1270,11 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
     }
 
     fun testMakePrimaryConstructorPrivateNoParams() {
-        doTest { newVisibility = Visibilities.PRIVATE }
+        doTest { newVisibility = DescriptorVisibilities.PRIVATE }
     }
 
     fun testMakePrimaryConstructorPublic() {
-        doTest { newVisibility = Visibilities.PUBLIC }
+        doTest { newVisibility = DescriptorVisibilities.PUBLIC }
     }
 
     fun testRenameExtensionParameterWithNamedArgs() {
@@ -1491,7 +1523,7 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
     fun testReturnTypeViaCodeFragment() {
         doTest {
             newName = "bar"
-            newReturnTypeInfo = resolveType("A<T, U>", true, true)
+            newReturnTypeInfo = resolveType("A<T, U>", isCovariant = true, forPreview = true)
         }
     }
 
@@ -1608,4 +1640,6 @@ class KotlinChangeSignatureTest : KotlinLightCodeInsightFixtureTestCase() {
             addParameter(parameterInfo)
         }
     }
+
+    fun testMoveLambdaParameterToLast() = doTest { swapParameters(0, 1) }
 }

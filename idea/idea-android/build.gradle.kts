@@ -49,6 +49,7 @@ dependencies {
     testRuntime(project(":allopen-ide-plugin"))
     testRuntime(project(":kotlin-scripting-idea"))
     testRuntime(project(":kotlinx-serialization-ide-plugin"))
+    testRuntime(project(":plugins:parcelize:parcelize-ide"))
 
     testRuntime(intellijPluginDep("android"))
 
@@ -75,6 +76,10 @@ dependencies {
 
     if (Ide.AS36.orHigher()) {
         testRuntime(intellijPluginDep("android-layoutlib"))
+    }
+
+    if (Ide.AS41.orHigher()) {
+        testRuntime(intellijPluginDep("platform-images"))
     }
 }
 

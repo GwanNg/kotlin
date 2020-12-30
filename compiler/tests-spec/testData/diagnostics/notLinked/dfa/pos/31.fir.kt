@@ -3,15 +3,6 @@
 // SKIP_TXT
 
 /*
- * KOTLIN DIAGNOSTICS NOT LINKED SPEC TEST (POSITIVE)
- *
- * SECTIONS: dfa
- * NUMBER: 31
- * DESCRIPTION: Raw data flow analysis test
- * HELPERS: classes, objects, typealiases, enumClasses, properties, interfaces, sealedClasses
- */
-
-/*
  * TESTCASE NUMBER: 1
  * UNEXPECTED BEHAVIOUR
  * ISSUES: KT-30376
@@ -21,8 +12,8 @@ fun case_1(x: Any?) {
         <!DEBUG_INFO_EXPRESSION_TYPE("Class & kotlin.Any?")!>x<!>
         <!DEBUG_INFO_EXPRESSION_TYPE("Class & kotlin.Any?")!>x<!>.prop_8
         <!DEBUG_INFO_EXPRESSION_TYPE("Class & kotlin.Any?")!>x<!>.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
-        <!DEBUG_INFO_EXPRESSION_TYPE("Class & kotlin.Any?")!>x<!>.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>
-        <!DEBUG_INFO_EXPRESSION_TYPE("Class & kotlin.Any?")!>x<!>.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("Class & kotlin.Any?")!>x<!>.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("Class & kotlin.Any?")!>x<!>.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
     }
 }
 
@@ -36,8 +27,8 @@ fun case_2(x: Class?) {
         <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>
         <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8
         <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
-        <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>
-        <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
     }
 }
 
@@ -50,9 +41,9 @@ fun case_3(x: Any?) {
     if ((x as Class?)?.prop_8?.prop_8?.prop_8?.prop_8 == null) else {
         <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>
         <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
-        <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>
-        <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>
-        <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
     }
 }
 
@@ -65,9 +56,9 @@ fun case_4(x: Any?) {
     if ((x as Class?)!!.prop_8?.prop_8?.prop_8?.prop_8 == null) else {
         <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>
         <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
-        <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>
-        <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>
-        <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("Class? & kotlin.Any?")!>x<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
     }
 }
 
@@ -82,7 +73,7 @@ fun case_5(x: Class?) {
         <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8
         <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.prop_8
         <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
-        <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
     }
 }
 
@@ -97,7 +88,7 @@ fun case_6(x: Class?) {
         <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8
         <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.prop_8
         <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.prop_8.prop_8
-        <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.prop_8.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!UNRESOLVED_REFERENCE!>prop_8<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("Class & Class?")!>x<!>.prop_8.prop_8.prop_8.<!INAPPLICABLE_CANDIDATE!>prop_8<!>.<!INAPPLICABLE_CANDIDATE!>prop_8<!>
     }
 }
 

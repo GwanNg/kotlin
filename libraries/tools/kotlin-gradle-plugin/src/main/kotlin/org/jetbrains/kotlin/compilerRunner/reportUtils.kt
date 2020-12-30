@@ -16,11 +16,9 @@
 
 package org.jetbrains.kotlin.compilerRunner
 
-import org.gradle.api.file.FileCollection
-import org.gradle.process.ExecOperations
-import org.gradle.process.ExecResult
+import groovy.json.StringEscapeUtils
 import org.jetbrains.kotlin.cli.common.ExitCode
-import org.jetbrains.kotlin.cli.common.messages.CompilerMessageLocation
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSourceLocation
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.cli.common.messages.MessageRenderer
@@ -28,12 +26,12 @@ import org.jetbrains.kotlin.config.KotlinCompilerVersion
 import org.jetbrains.kotlin.daemon.client.DaemonReportingTargets
 import org.jetbrains.kotlin.daemon.client.launchProcessWithFallback
 import org.jetbrains.kotlin.gradle.logging.GradleKotlinLogger
-import org.jetbrains.kotlin.gradle.tasks.internal.GradleExecOperationsHolder
 import org.jetbrains.org.objectweb.asm.ClassReader
 import org.jetbrains.org.objectweb.asm.ClassVisitor
 import org.jetbrains.org.objectweb.asm.FieldVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes
 import java.io.File
+import java.nio.file.Files
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.zip.ZipFile
@@ -128,9 +126,14 @@ internal fun runToolInSeparateProcess(
 }
 
 private fun writeArgumentsToFile(directory: File, argsArray: Array<String>): File {
-    val compilerOptions = File.createTempFile(LocalDateTime.now().format(DateTimeFormatter.BASIC_ISO_DATE) + "_", ".compiler.options", directory)
+    val prefix = LocalDateTime.now().format(DateTimeFormatter.BASIC_ISO_DATE) + "_"
+    val suffix = ".compiler.options"
+    val compilerOptions = if (directory.exists())
+        Files.createTempFile(directory.toPath(), prefix, suffix).toFile()
+    else
+        Files.createTempFile(prefix, suffix).toFile()
     compilerOptions.deleteOnExit()
-    compilerOptions.writeText(argsArray.joinToString(" "))
+    compilerOptions.writeText(argsArray.joinToString(" ") { "\"${StringEscapeUtils.escapeJava(it)}\"" })
     return compilerOptions
 }
 
@@ -144,7 +147,7 @@ private fun createLoggingMessageCollector(log: KotlinLogger): MessageCollector =
 
     override fun hasErrors(): Boolean = hasErrors
 
-    override fun report(severity: CompilerMessageSeverity, message: String, location: CompilerMessageLocation?) {
+    override fun report(severity: CompilerMessageSeverity, message: String, location: CompilerMessageSourceLocation?) {
         val locMessage = messageRenderer.render(severity, message, location)
         when (severity) {
             CompilerMessageSeverity.EXCEPTION -> log.error(locMessage)

@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.idea.script;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.util.KtTestUtil;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.runner.RunWith;
 
@@ -37,7 +38,7 @@ public class ScriptConfigurationHighlightingTestGenerated extends AbstractScript
         }
 
         public void testAllFilesPresentInHighlighting() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/script/definition/highlighting"), Pattern.compile("^([^\\.]+)$"), null, false);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/script/definition/highlighting"), Pattern.compile("^([^\\.]+)$"), null, false);
         }
 
         @TestMetadata("asyncResolver")
@@ -100,14 +101,19 @@ public class ScriptConfigurationHighlightingTestGenerated extends AbstractScript
             runTest("idea/testData/script/definition/highlighting/implicitReceiver/");
         }
 
-        @TestMetadata("javaNestedClass")
-        public void testJavaNestedClass() throws Exception {
-            runTest("idea/testData/script/definition/highlighting/javaNestedClass/");
-        }
-
         @TestMetadata("multiModule")
         public void testMultiModule() throws Exception {
             runTest("idea/testData/script/definition/highlighting/multiModule/");
+        }
+
+        @TestMetadata("multipleScripts")
+        public void testMultipleScripts() throws Exception {
+            runTest("idea/testData/script/definition/highlighting/multipleScripts/");
+        }
+
+        @TestMetadata("nestedClass")
+        public void testNestedClass() throws Exception {
+            runTest("idea/testData/script/definition/highlighting/nestedClass/");
         }
 
         @TestMetadata("noResolver")
@@ -145,7 +151,7 @@ public class ScriptConfigurationHighlightingTestGenerated extends AbstractScript
         }
 
         public void testAllFilesPresentInComplex() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/script/definition/complex"), Pattern.compile("^([^\\.]+)$"), null, false);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/script/definition/complex"), Pattern.compile("^([^\\.]+)$"), null, false);
         }
 
         @TestMetadata("errorResolver")

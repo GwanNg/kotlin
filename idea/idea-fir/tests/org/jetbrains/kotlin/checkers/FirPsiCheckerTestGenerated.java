@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.checkers;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.util.KtTestUtil;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.runner.RunWith;
 
@@ -32,7 +33,7 @@ public class FirPsiCheckerTestGenerated extends AbstractFirPsiCheckerTest {
         }
 
         public void testAllFilesPresentInChecker() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker"), Pattern.compile("^(.+)\\.kt$"), null, false);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker"), Pattern.compile("^(.+)\\.kt$"), null, false);
         }
 
         @TestMetadata("AnnotationOnFile.kt")
@@ -370,7 +371,7 @@ public class FirPsiCheckerTestGenerated extends AbstractFirPsiCheckerTest {
         }
 
         public void testAllFilesPresentInRegression() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/regression"), Pattern.compile("^(.+)\\.kt$"), null, true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/regression"), Pattern.compile("^(.+)\\.kt$"), null, true);
         }
 
         @TestMetadata("AmbiguityOnLazyTypeComputation.kt")
@@ -613,7 +614,7 @@ public class FirPsiCheckerTestGenerated extends AbstractFirPsiCheckerTest {
         }
 
         public void testAllFilesPresentInRecovery() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/recovery"), Pattern.compile("^(.+)\\.kt$"), null, true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/recovery"), Pattern.compile("^(.+)\\.kt$"), null, true);
         }
 
         @TestMetadata("namelessMembers.kt")
@@ -641,124 +642,12 @@ public class FirPsiCheckerTestGenerated extends AbstractFirPsiCheckerTest {
         }
 
         public void testAllFilesPresentInRendering() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/rendering"), Pattern.compile("^(.+)\\.kt$"), null, true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/rendering"), Pattern.compile("^(.+)\\.kt$"), null, true);
         }
 
         @TestMetadata("TypeInferenceError.kt")
         public void testTypeInferenceError() throws Exception {
             runTest("idea/testData/checker/rendering/TypeInferenceError.kt");
-        }
-    }
-
-    @TestMetadata("idea/testData/checker/duplicateJvmSignature")
-    @TestDataPath("$PROJECT_ROOT")
-    @RunWith(JUnit3RunnerWithInners.class)
-    public static class DuplicateJvmSignature extends AbstractFirPsiCheckerTest {
-        private void runTest(String testDataFilePath) throws Exception {
-            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
-        }
-
-        public void testAllFilesPresentInDuplicateJvmSignature() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/duplicateJvmSignature"), Pattern.compile("^(.+)\\.kt$"), null, true);
-        }
-
-        @TestMetadata("idea/testData/checker/duplicateJvmSignature/fields")
-        @TestDataPath("$PROJECT_ROOT")
-        @RunWith(JUnit3RunnerWithInners.class)
-        public static class Fields extends AbstractFirPsiCheckerTest {
-            private void runTest(String testDataFilePath) throws Exception {
-                KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
-            }
-
-            public void testAllFilesPresentInFields() throws Exception {
-                KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/duplicateJvmSignature/fields"), Pattern.compile("^(.+)\\.kt$"), null, true);
-            }
-
-            @TestMetadata("classObjectCopiedFieldObject.kt")
-            public void testClassObjectCopiedFieldObject() throws Exception {
-                runTest("idea/testData/checker/duplicateJvmSignature/fields/classObjectCopiedFieldObject.kt");
-            }
-        }
-
-        @TestMetadata("idea/testData/checker/duplicateJvmSignature/functionAndProperty")
-        @TestDataPath("$PROJECT_ROOT")
-        @RunWith(JUnit3RunnerWithInners.class)
-        public static class FunctionAndProperty extends AbstractFirPsiCheckerTest {
-            private void runTest(String testDataFilePath) throws Exception {
-                KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
-            }
-
-            public void testAllFilesPresentInFunctionAndProperty() throws Exception {
-                KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/duplicateJvmSignature/functionAndProperty"), Pattern.compile("^(.+)\\.kt$"), null, true);
-            }
-
-            @TestMetadata("ambiguous.kt")
-            public void testAmbiguous() throws Exception {
-                runTest("idea/testData/checker/duplicateJvmSignature/functionAndProperty/ambiguous.kt");
-            }
-
-            @TestMetadata("class.kt")
-            public void testClass() throws Exception {
-                runTest("idea/testData/checker/duplicateJvmSignature/functionAndProperty/class.kt");
-            }
-
-            @TestMetadata("classObject.kt")
-            public void testClassObject() throws Exception {
-                runTest("idea/testData/checker/duplicateJvmSignature/functionAndProperty/classObject.kt");
-            }
-
-            @TestMetadata("localClass.kt")
-            public void testLocalClass() throws Exception {
-                runTest("idea/testData/checker/duplicateJvmSignature/functionAndProperty/localClass.kt");
-            }
-
-            @TestMetadata("nestedClass.kt")
-            public void testNestedClass() throws Exception {
-                runTest("idea/testData/checker/duplicateJvmSignature/functionAndProperty/nestedClass.kt");
-            }
-
-            @TestMetadata("object.kt")
-            public void testObject() throws Exception {
-                runTest("idea/testData/checker/duplicateJvmSignature/functionAndProperty/object.kt");
-            }
-
-            @TestMetadata("objectExpression.kt")
-            public void testObjectExpression() throws Exception {
-                runTest("idea/testData/checker/duplicateJvmSignature/functionAndProperty/objectExpression.kt");
-            }
-
-            @TestMetadata("topLevel.kt")
-            public void testTopLevel() throws Exception {
-                runTest("idea/testData/checker/duplicateJvmSignature/functionAndProperty/topLevel.kt");
-            }
-
-            @TestMetadata("topLevelMultifileRuntime.kt")
-            public void testTopLevelMultifileRuntime() throws Exception {
-                runTest("idea/testData/checker/duplicateJvmSignature/functionAndProperty/topLevelMultifileRuntime.kt");
-            }
-
-            @TestMetadata("trait.kt")
-            public void testTrait() throws Exception {
-                runTest("idea/testData/checker/duplicateJvmSignature/functionAndProperty/trait.kt");
-            }
-        }
-
-        @TestMetadata("idea/testData/checker/duplicateJvmSignature/traitImpl")
-        @TestDataPath("$PROJECT_ROOT")
-        @RunWith(JUnit3RunnerWithInners.class)
-        public static class TraitImpl extends AbstractFirPsiCheckerTest {
-            private void runTest(String testDataFilePath) throws Exception {
-                KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
-            }
-
-            public void testAllFilesPresentInTraitImpl() throws Exception {
-                KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/duplicateJvmSignature/traitImpl"), Pattern.compile("^(.+)\\.kt$"), null, true);
-            }
-
-            @TestMetadata("twoTraits.kt")
-            public void testTwoTraits() throws Exception {
-                runTest("idea/testData/checker/duplicateJvmSignature/traitImpl/twoTraits.kt");
-            }
         }
     }
 
@@ -771,7 +660,7 @@ public class FirPsiCheckerTestGenerated extends AbstractFirPsiCheckerTest {
         }
 
         public void testAllFilesPresentInInfos() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/infos"), Pattern.compile("^(.+)\\.kt$"), null, true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/infos"), Pattern.compile("^(.+)\\.kt$"), null, true);
         }
 
         @TestMetadata("CapturedConstructorParameter.kt")
@@ -864,7 +753,7 @@ public class FirPsiCheckerTestGenerated extends AbstractFirPsiCheckerTest {
         }
 
         public void testAllFilesPresentInDiagnosticsMessage() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/diagnosticsMessage"), Pattern.compile("^(.+)\\.kt$"), null, true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/checker/diagnosticsMessage"), Pattern.compile("^(.+)\\.kt$"), null, true);
         }
 
         @TestMetadata("fullPackageFQNameOnVisiblityError.kt")

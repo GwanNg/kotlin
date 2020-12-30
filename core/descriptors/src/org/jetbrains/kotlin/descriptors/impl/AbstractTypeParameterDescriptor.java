@@ -72,14 +72,14 @@ public abstract class AbstractTypeParameterDescriptor extends DeclarationDescrip
                 return KotlinTypeFactory.simpleTypeWithNonTrivialMemberScope(
                         Annotations.Companion.getEMPTY(),
                         getTypeConstructor(), Collections.<TypeProjection>emptyList(), false,
-                        new LazyScopeAdapter(storageManager.createLazyValue(
+                        new LazyScopeAdapter(
                                 new Function0<MemberScope>() {
                                     @Override
                                     public MemberScope invoke() {
                                         return TypeIntersectionScope.create("Scope for type parameter " + name.asString(), getUpperBounds());
                                     }
                                 }
-                        ))
+                        )
                 );
             }
         });
@@ -134,6 +134,11 @@ public abstract class AbstractTypeParameterDescriptor extends DeclarationDescrip
     @Override
     public TypeParameterDescriptor getOriginal() {
         return (TypeParameterDescriptor) super.getOriginal();
+    }
+
+    @NotNull
+    protected List<KotlinType> processBoundsWithoutCycles(@NotNull List<KotlinType> bounds) {
+        return bounds;
     }
 
     @Override
@@ -204,6 +209,12 @@ public abstract class AbstractTypeParameterDescriptor extends DeclarationDescrip
         @Override
         protected void reportSupertypeLoopError(@NotNull KotlinType type) {
             AbstractTypeParameterDescriptor.this.reportSupertypeLoopError(type);
+        }
+
+        @NotNull
+        @Override
+        protected List<KotlinType> processSupertypesWithoutCycles(@NotNull List<KotlinType> supertypes) {
+            return processBoundsWithoutCycles(supertypes);
         }
 
         @Nullable

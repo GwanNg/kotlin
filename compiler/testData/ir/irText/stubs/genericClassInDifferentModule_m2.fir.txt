@@ -6,7 +6,7 @@ FILE fqName:<root> fileName:/genericClassInDifferentModule_m2.kt
       VALUE_PARAMETER name:x index:0 type:T of <root>.Derived1
       BLOCK_BODY
         DELEGATING_CONSTRUCTOR_CALL 'public constructor <init> (x: T of <root>.Base) [primary] declared in <root>.Base'
-          <T>: <none>
+          <T>: T of <root>.Derived1
           x: GET_VAR 'x: T of <root>.Derived1 declared in <root>.Derived1.<init>' type=T of <root>.Derived1 origin=null
         INSTANCE_INITIALIZER_CALL classDescriptor='CLASS CLASS name:Derived1 modality:FINAL visibility:public superTypes:[<root>.Base<T of <root>.Derived1>]'
     FUN name:foo visibility:public modality:FINAL <Y> ($this:<root>.Derived1<T of <root>.Derived1>, y:Y of <root>.Derived1.foo) returnType:T of <root>.Derived1
@@ -45,6 +45,8 @@ FILE fqName:<root> fileName:/genericClassInDifferentModule_m2.kt
     PROPERTY name:exn visibility:public modality:FINAL [var]
       FUN name:<get-exn> visibility:public modality:FINAL <Z> ($this:<root>.Derived1<T of <root>.Derived1>, $receiver:Z of <root>.Derived1.<get-exn>) returnType:T of <root>.Derived1
         correspondingProperty: PROPERTY name:exn visibility:public modality:FINAL [var]
+        overridden:
+          public abstract fun <get-exn> <Z> (): T of <root>.Base declared in <root>.Base
         TYPE_PARAMETER name:Z index:0 variance: superTypes:[kotlin.Any?]
         $this: VALUE_PARAMETER name:<this> type:<root>.Derived1<T of <root>.Derived1>
         $receiver: VALUE_PARAMETER name:<this> type:Z of <root>.Derived1.<get-exn>
@@ -54,6 +56,8 @@ FILE fqName:<root> fileName:/genericClassInDifferentModule_m2.kt
               $this: GET_VAR '<this>: <root>.Derived1<T of <root>.Derived1> declared in <root>.Derived1.<get-exn>' type=<root>.Derived1<T of <root>.Derived1> origin=null
       FUN name:<set-exn> visibility:public modality:FINAL <Z> ($this:<root>.Derived1<T of <root>.Derived1>, $receiver:Z of <root>.Derived1.<set-exn>, value:T of <root>.Derived1) returnType:kotlin.Unit
         correspondingProperty: PROPERTY name:exn visibility:public modality:FINAL [var]
+        overridden:
+          public abstract fun <set-exn> <Z> (<set-?>: T of <root>.Base): kotlin.Unit declared in <root>.Base
         TYPE_PARAMETER name:Z index:0 variance: superTypes:[kotlin.Any?]
         $this: VALUE_PARAMETER name:<this> type:<root>.Derived1<T of <root>.Derived1>
         $receiver: VALUE_PARAMETER name:<this> type:Z of <root>.Derived1.<set-exn>

@@ -20,6 +20,7 @@ import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
+import org.jetbrains.kotlin.builtins.StandardNames;
 import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.descriptors.annotations.CompositeAnnotations;
@@ -51,6 +52,19 @@ public class TypeSubstitutor implements TypeSubstitutorMarker {
     @NotNull
     public static TypeSubstitutor create(@NotNull TypeSubstitution substitution) {
         return new TypeSubstitutor(substitution);
+    }
+
+    @NotNull
+    public TypeSubstitutor replaceWithNonApproximatingSubstitution() {
+        if (!(substitution instanceof IndexedParametersSubstitution) || !substitution.approximateContravariantCapturedTypes()) return this;
+
+        return new TypeSubstitutor(
+                new IndexedParametersSubstitution(
+                        ((IndexedParametersSubstitution) substitution).getParameters(),
+                        ((IndexedParametersSubstitution) substitution).getArguments(),
+                        false
+                )
+        );
     }
 
     @NotNull
@@ -251,7 +265,7 @@ public class TypeSubstitutor implements TypeSubstitutorMarker {
             @Nullable TypeParameterDescriptor typeParameter,
             @NotNull TypeProjection originalProjection
     ) {
-        if (!originalType.getAnnotations().hasAnnotation(KotlinBuiltIns.FQ_NAMES.unsafeVariance)) return substituted;
+        if (!originalType.getAnnotations().hasAnnotation(StandardNames.FqNames.unsafeVariance)) return substituted;
 
         TypeConstructor constructor = substituted.getType().getConstructor();
         if (!(constructor instanceof NewCapturedTypeConstructor)) return substituted;
@@ -277,11 +291,11 @@ public class TypeSubstitutor implements TypeSubstitutorMarker {
 
     @NotNull
     private static Annotations filterOutUnsafeVariance(@NotNull Annotations annotations) {
-        if (!annotations.hasAnnotation(KotlinBuiltIns.FQ_NAMES.unsafeVariance)) return annotations;
+        if (!annotations.hasAnnotation(StandardNames.FqNames.unsafeVariance)) return annotations;
         return new FilteredAnnotations(annotations, new Function1<FqName, Boolean>() {
             @Override
             public Boolean invoke(@NotNull  FqName name) {
-                return !name.equals(KotlinBuiltIns.FQ_NAMES.unsafeVariance);
+                return !name.equals(StandardNames.FqNames.unsafeVariance);
             }
         });
     }
@@ -301,7 +315,9 @@ public class TypeSubstitutor implements TypeSubstitutorMarker {
         KotlinType substitutedAbbreviation = null;
         SimpleType abbreviation = SpecialTypesKt.getAbbreviation(type);
         if (abbreviation != null) {
-            substitutedAbbreviation = substitute(abbreviation, Variance.INVARIANT);
+            // We shouldn't approximate abbreviation at the top-level as they can't be projected: below we substitute this always as invariant
+            TypeSubstitutor substitutorForAbbreviation = replaceWithNonApproximatingSubstitution();
+            substitutedAbbreviation = substitutorForAbbreviation.substitute(abbreviation, Variance.INVARIANT);
         }
 
         List<TypeProjection> substitutedArguments = substituteTypeArguments(

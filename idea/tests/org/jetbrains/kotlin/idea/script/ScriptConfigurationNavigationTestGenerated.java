@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.idea.script;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.util.KtTestUtil;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.runner.RunWith;
 
@@ -25,7 +26,12 @@ public class ScriptConfigurationNavigationTestGenerated extends AbstractScriptCo
     }
 
     public void testAllFilesPresentInNavigation() throws Exception {
-        KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/script/definition/navigation"), Pattern.compile("^([^\\.]+)$"), null, false);
+        KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/script/definition/navigation"), Pattern.compile("^([^\\.]+)$"), null, false);
+    }
+
+    @TestMetadata("buildSrcProblem")
+    public void testBuildSrcProblem() throws Exception {
+        runTest("idea/testData/script/definition/navigation/buildSrcProblem/");
     }
 
     @TestMetadata("conflictingModule")
@@ -36,6 +42,11 @@ public class ScriptConfigurationNavigationTestGenerated extends AbstractScriptCo
     @TestMetadata("customBaseClass")
     public void testCustomBaseClass() throws Exception {
         runTest("idea/testData/script/definition/navigation/customBaseClass/");
+    }
+
+    @TestMetadata("includedPluginProblem")
+    public void testIncludedPluginProblem() throws Exception {
+        runTest("idea/testData/script/definition/navigation/includedPluginProblem/");
     }
 
     @TestMetadata("javaLib")

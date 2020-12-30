@@ -69,7 +69,7 @@ fun SmartPrinter.printImplementation(implementation: Implementation) {
             }
             println("(")
             withIndent {
-                fieldsWithoutDefault.forEachIndexed { i, field ->
+                fieldsWithoutDefault.forEachIndexed { _, field ->
                     printField(field, isImplementation = true, override = true, end = ",")
                 }
             }
@@ -150,8 +150,9 @@ fun SmartPrinter.printImplementation(implementation: Implementation) {
                                     if (type == "FirWhenExpressionImpl" && field.name == "subject") {
                                         println(
                                             """
-                                        |if (subjectVariable != null) {
-                                        |            subjectVariable.accept(visitor, data)
+                                        |val subjectVariable_ = subjectVariable
+                                        |        if (subjectVariable_ != null) {
+                                        |            subjectVariable_.accept(visitor, data)
                                         |        } else {
                                         |            subject?.accept(visitor, data)
                                         |        }
@@ -302,10 +303,15 @@ fun SmartPrinter.printImplementation(implementation: Implementation) {
                 }
             }
 
-            fun generateReplace(field: Field, overridenType: Importable? = null, body: () -> Unit) {
+            fun generateReplace(
+                field: Field,
+                overridenType: Importable? = null,
+                forceNullable: Boolean = false,
+                body: () -> Unit,
+            ) {
                 println()
                 abstract()
-                print("override ${field.replaceFunctionDeclaration(overridenType)}")
+                print("override ${field.replaceFunctionDeclaration(overridenType, forceNullable)}")
                 if (isInterface || isAbstract) {
                     println()
                     return
@@ -325,7 +331,7 @@ fun SmartPrinter.printImplementation(implementation: Implementation) {
             for (field in allFields.filter { it.withReplace }) {
                 val capitalizedFieldName = field.name.capitalize()
                 val newValue = "new$capitalizedFieldName"
-                generateReplace(field) {
+                generateReplace(field, forceNullable = field.useNullableForReplace) {
                     when {
                         field.withGetter -> {}
 
@@ -335,6 +341,9 @@ fun SmartPrinter.printImplementation(implementation: Implementation) {
                         }
 
                         else -> {
+                            if (field.useNullableForReplace) {
+                                println("require($newValue != null)")
+                            }
                             println("${field.name} = $newValue")
                         }
                     }

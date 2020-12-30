@@ -18,14 +18,18 @@ dependencies {
     compile(project(":idea:idea-jps-common"))
 
     compileOnly(intellijDep())
-    Platform[192].orHigher {
-        compileOnly(intellijPluginDep("java"))
-        testCompileOnly(intellijPluginDep("java"))
-        testRuntimeOnly(intellijPluginDep("java"))
-        testRuntimeOnly(intellijPluginDep("java-ide-customization"))
-    }
-    
+    compileOnly(intellijPluginDep("java"))
+    testCompileOnly(intellijPluginDep("java"))
+    testRuntimeOnly(intellijPluginDep("java"))
+    testRuntimeOnly(intellijPluginDep("java-ide-customization"))
+
     excludeInAndroidStudio(rootProject) { compileOnly(intellijPluginDep("maven")) }
+
+    excludeInAndroidStudio(rootProject) {
+        Platform[202].orHigher {
+            compileOnly(intellijPluginDep("maven-model"))
+        }
+    }
 
     testCompile(projectTests(":idea"))
     testCompile(projectTests(":compiler:tests-common"))
@@ -35,6 +39,11 @@ dependencies {
     if (Ide.IJ()) {
         testCompileOnly(intellijPluginDep("maven"))
         testRuntime(intellijPluginDep("maven"))
+
+        Platform[202].orHigher {
+            testCompileOnly(intellijPluginDep("maven-model"))
+            testRuntime(intellijPluginDep("maven-model"))
+        }
 
         if (Ide.IJ201.orHigher()) {
             testRuntime(intellijPluginDep("repository-search"))
@@ -53,6 +62,7 @@ dependencies {
     testRuntime(project(":sam-with-receiver-ide-plugin"))
     testRuntime(project(":allopen-ide-plugin"))
     testRuntime(project(":noarg-ide-plugin"))
+    testRuntime(project(":plugins:parcelize:parcelize-ide"))
     testRuntime(project(":kotlin-scripting-idea"))
     testRuntime(project(":kotlinx-serialization-ide-plugin"))
 
@@ -69,6 +79,10 @@ dependencies {
 
     if (Ide.AS36.orHigher()) {
         testRuntime(intellijPluginDep("android-layoutlib"))
+    }
+
+    if (Ide.AS41.orHigher()) {
+        testRuntime(intellijPluginDep("platform-images"))
     }
 }
 

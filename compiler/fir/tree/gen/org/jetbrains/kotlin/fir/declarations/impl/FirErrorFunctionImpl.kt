@@ -7,6 +7,8 @@ package org.jetbrains.kotlin.fir.declarations.impl
 
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.FirSourceElement
+import org.jetbrains.kotlin.fir.declarations.FirDeclarationAttributes
+import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
 import org.jetbrains.kotlin.fir.declarations.FirErrorFunction
 import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
 import org.jetbrains.kotlin.fir.declarations.FirTypeParameter
@@ -15,7 +17,6 @@ import org.jetbrains.kotlin.fir.diagnostics.ConeDiagnostic
 import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
 import org.jetbrains.kotlin.fir.expressions.FirBlock
 import org.jetbrains.kotlin.fir.references.FirControlFlowGraphReference
-import org.jetbrains.kotlin.fir.references.impl.FirEmptyControlFlowGraphReference
 import org.jetbrains.kotlin.fir.symbols.impl.FirErrorFunctionSymbol
 import org.jetbrains.kotlin.fir.types.FirTypeRef
 import org.jetbrains.kotlin.fir.types.impl.FirErrorTypeRefImpl
@@ -30,6 +31,8 @@ internal class FirErrorFunctionImpl(
     override val source: FirSourceElement?,
     override val session: FirSession,
     override var resolvePhase: FirResolvePhase,
+    override val origin: FirDeclarationOrigin,
+    override val attributes: FirDeclarationAttributes,
     override val annotations: MutableList<FirAnnotationCall>,
     override val valueParameters: MutableList<FirValueParameter>,
     override val diagnostic: ConeDiagnostic,
@@ -38,7 +41,7 @@ internal class FirErrorFunctionImpl(
 ) : FirErrorFunction() {
     override var returnTypeRef: FirTypeRef = FirErrorTypeRefImpl(null, diagnostic)
     override val receiverTypeRef: FirTypeRef? get() = null
-    override var controlFlowGraphReference: FirControlFlowGraphReference = FirEmptyControlFlowGraphReference
+    override var controlFlowGraphReference: FirControlFlowGraphReference? = null
     override val body: FirBlock? get() = null
 
     init {
@@ -48,7 +51,7 @@ internal class FirErrorFunctionImpl(
     override fun <R, D> acceptChildren(visitor: FirVisitor<R, D>, data: D) {
         annotations.forEach { it.accept(visitor, data) }
         returnTypeRef.accept(visitor, data)
-        controlFlowGraphReference.accept(visitor, data)
+        controlFlowGraphReference?.accept(visitor, data)
         valueParameters.forEach { it.accept(visitor, data) }
         typeParameters.forEach { it.accept(visitor, data) }
     }
@@ -56,9 +59,9 @@ internal class FirErrorFunctionImpl(
     override fun <D> transformChildren(transformer: FirTransformer<D>, data: D): FirErrorFunctionImpl {
         transformAnnotations(transformer, data)
         transformReturnTypeRef(transformer, data)
-        transformControlFlowGraphReference(transformer, data)
+        controlFlowGraphReference = controlFlowGraphReference?.transformSingle(transformer, data)
         transformValueParameters(transformer, data)
-        typeParameters.transformInplace(transformer, data)
+        transformTypeParameters(transformer, data)
         return this
     }
 
@@ -76,13 +79,17 @@ internal class FirErrorFunctionImpl(
         return this
     }
 
-    override fun <D> transformControlFlowGraphReference(transformer: FirTransformer<D>, data: D): FirErrorFunctionImpl {
-        controlFlowGraphReference = controlFlowGraphReference.transformSingle(transformer, data)
+    override fun <D> transformValueParameters(transformer: FirTransformer<D>, data: D): FirErrorFunctionImpl {
+        valueParameters.transformInplace(transformer, data)
         return this
     }
 
-    override fun <D> transformValueParameters(transformer: FirTransformer<D>, data: D): FirErrorFunctionImpl {
-        valueParameters.transformInplace(transformer, data)
+    override fun <D> transformBody(transformer: FirTransformer<D>, data: D): FirErrorFunctionImpl {
+        return this
+    }
+
+    override fun <D> transformTypeParameters(transformer: FirTransformer<D>, data: D): FirErrorFunctionImpl {
+        typeParameters.transformInplace(transformer, data)
         return this
     }
 
@@ -96,8 +103,14 @@ internal class FirErrorFunctionImpl(
 
     override fun replaceReceiverTypeRef(newReceiverTypeRef: FirTypeRef?) {}
 
+    override fun replaceControlFlowGraphReference(newControlFlowGraphReference: FirControlFlowGraphReference?) {
+        controlFlowGraphReference = newControlFlowGraphReference
+    }
+
     override fun replaceValueParameters(newValueParameters: List<FirValueParameter>) {
         valueParameters.clear()
         valueParameters.addAll(newValueParameters)
     }
+
+    override fun replaceBody(newBody: FirBlock?) {}
 }

@@ -8,16 +8,8 @@ package org.jetbrains.kotlin.fir.analysis.collectors
 import org.jetbrains.kotlin.fir.FirSession
 
 object FirDiagnosticsCollector {
-    fun create(session: FirSession): AbstractDiagnosticCollector {
+    fun create(session: FirSession): SimpleDiagnosticsCollector {
         val collector = SimpleDiagnosticsCollector(session)
-        collector.registerAllComponents()
-        return collector
-    }
-
-    // Use in CLI compiler
-    @Suppress("unused")
-    fun createParallel(session: FirSession): AbstractDiagnosticCollector {
-        val collector = ParallelDiagnosticsCollector(session, numberOfThreads = 4)
         collector.registerAllComponents()
         return collector
     }

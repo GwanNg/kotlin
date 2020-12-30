@@ -5,12 +5,13 @@
 
 package org.jetbrains.kotlin.generators.tests
 
-import org.jetbrains.kotlin.generators.tests.generator.testGroup
+import org.jetbrains.kotlin.generators.impl.generateTestGroupSuite
 import org.jetbrains.kotlin.js.test.AbstractDceTest
 import org.jetbrains.kotlin.js.test.AbstractJsLineNumberTest
+import org.jetbrains.kotlin.js.test.es6.semantics.*
 import org.jetbrains.kotlin.js.test.ir.semantics.*
 import org.jetbrains.kotlin.js.test.semantics.*
-import org.jetbrains.kotlin.js.test.wasm.semantics.AbstractIrWasmBoxWasmTest
+import org.jetbrains.kotlin.js.test.wasm.semantics.AbstractIrCodegenBoxWasmTest
 import org.jetbrains.kotlin.test.TargetBackend
 
 fun main(args: Array<String>) {
@@ -19,63 +20,109 @@ fun main(args: Array<String>) {
     // TODO: repair these tests
     //generateTestDataForReservedWords()
 
-    testGroup("js/js.tests/test", "js/js.translator/testData", testRunnerMethodName = "runTest0") {
-        testClass<AbstractBoxJsTest> {
-            model("box/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS)
+    generateTestGroupSuite(args) {
+        testGroup("js/js.tests/tests-gen", "js/js.translator/testData", testRunnerMethodName = "runTest0") {
+            testClass<AbstractBoxJsTest> {
+                model("box/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS)
+            }
+
+            testClass<AbstractIrBoxJsTest> {
+                model("box/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS_IR)
+            }
+
+            testClass<AbstractIrBoxJsES6Test> {
+                model("box/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS_IR_ES6)
+            }
+
+            testClass<AbstractIrJsTypeScriptExportTest> {
+                model("typescript-export/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS_IR)
+            }
+
+            testClass<AbstractIrJsTypeScriptExportES6Test> {
+                model("typescript-export/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS_IR_ES6)
+            }
+
+            testClass<AbstractLegacyJsTypeScriptExportTest> {
+                model("typescript-export/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS)
+            }
+
+
+            testClass<AbstractSourceMapGenerationSmokeTest> {
+                model("sourcemap/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS)
+            }
+
+            testClass<AbstractOutputPrefixPostfixTest> {
+                model("outputPrefixPostfix/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS)
+            }
+
+            testClass<AbstractDceTest> {
+                model("dce/", pattern = "(.+)\\.js", targetBackend = TargetBackend.JS)
+            }
+
+            testClass<AbstractJsLineNumberTest> {
+                model("lineNumbers/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS)
+            }
         }
 
-        testClass<AbstractIrBoxJsTest> {
-            model("box/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS_IR)
-        }
+        testGroup("js/js.tests/tests-gen", "compiler/testData", testRunnerMethodName = "runTest0") {
+            testClass<AbstractJsCodegenBoxTest> {
+                model("codegen/box", targetBackend = TargetBackend.JS)
+            }
 
-        testClass<AbstractIrJsTypeScriptExportTest> {
-            model("typescript-export/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS_IR)
-        }
+            testClass<AbstractIrJsCodegenBoxTest> {
+                model("codegen/box", targetBackend = TargetBackend.JS_IR)
+            }
 
-        testClass<AbstractSourceMapGenerationSmokeTest> {
-            model("sourcemap/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS)
-        }
+            testClass<AbstractIrJsCodegenBoxErrorTest> {
+                model("codegen/boxError", targetBackend = TargetBackend.JS_IR)
+            }
 
-        testClass<AbstractOutputPrefixPostfixTest> {
-            model("outputPrefixPostfix/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS)
-        }
+            testClass<AbstractIrCodegenBoxWasmTest> {
+                model(
+                    "codegen/box", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.WASM, excludeDirs = listOf(
+                        
+                        // TODO: Support reflection
+                        "toArray", "classLiteral", "reflection",
 
-        testClass<AbstractDceTest> {
-            model("dce/", pattern = "(.+)\\.js", targetBackend = TargetBackend.JS)
-        }
+                        // TODO: Add stdlib
+                        "contracts", "platformTypes",
 
-        testClass<AbstractJsLineNumberTest> {
-            model("lineNumbers/", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS)
-        }
+                        // TODO: ArrayList
+                        "ranges/stepped/unsigned",
 
-        testClass<AbstractIrWasmBoxWasmTest> {
-            model("wasmBox", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.WASM)
-        }
+                        // TODO: Support coroutines
+                        "coroutines", "parametersMetadata",
 
-        testClass<AbstractIrWasmBoxJsTest> {
-            model("wasmBox", pattern = "^([^_](.+))\\.kt$", targetBackend = TargetBackend.JS_IR)
-        }
-    }
+                        // TODO: Support exceptions
+                        "finally", "deadCodeElimination", "controlStructures/tryCatchInExpressions",
 
-    testGroup("js/js.tests/test", "compiler/testData", testRunnerMethodName = "runTest0") {
-        testClass<AbstractJsCodegenBoxTest> {
-            model("codegen/box", targetBackend = TargetBackend.JS)
-        }
+                        // TODO: Support delegated properties
+                        "delegatedProperty",
 
-        testClass<AbstractIrJsCodegenBoxTest> {
-            model("codegen/box", targetBackend = TargetBackend.JS_IR)
-        }
+                        "oldLanguageVersions"
+                    )
+                )
+            }
 
-        testClass<AbstractJsCodegenInlineTest> {
-            model("codegen/boxInline/", targetBackend = TargetBackend.JS)
-        }
+            testClass<AbstractIrJsCodegenBoxES6Test> {
+                model("codegen/box", targetBackend = TargetBackend.JS_IR_ES6)
+            }
 
-        testClass<AbstractIrJsCodegenInlineTest> {
-            model("codegen/boxInline/", targetBackend = TargetBackend.JS_IR)
-        }
+            testClass<AbstractJsCodegenInlineTest> {
+                model("codegen/boxInline/", targetBackend = TargetBackend.JS)
+            }
 
-        testClass<AbstractJsLegacyPrimitiveArraysBoxTest> {
-            model("codegen/box/arrays", targetBackend = TargetBackend.JS)
+            testClass<AbstractIrJsCodegenInlineTest> {
+                model("codegen/boxInline/", targetBackend = TargetBackend.JS_IR)
+            }
+
+            testClass<AbstractIrJsCodegenInlineES6Test> {
+                model("codegen/boxInline/", targetBackend = TargetBackend.JS_IR_ES6)
+            }
+
+            testClass<AbstractJsLegacyPrimitiveArraysBoxTest> {
+                model("codegen/box/arrays", targetBackend = TargetBackend.JS)
+            }
         }
     }
 }

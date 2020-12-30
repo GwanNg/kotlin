@@ -19,6 +19,7 @@ dependencies {
     compileOnly(intellijDep())
     excludeInAndroidStudio(rootProject) { compileOnly(intellijPluginDep("maven")) }
     compileOnly(intellijPluginDep("gradle"))
+    compileOnly(project(":idea:kotlin-gradle-tooling"))
 
     testRuntime(project(":kotlin-reflect"))
 
@@ -43,11 +44,9 @@ dependencies {
     testCompileOnly(intellijDep())
     testRuntimeOnly(intellijDep())
 
-    Platform[192].orHigher {
-        compileOnly(intellijPluginDep("java"))
-        testCompileOnly(intellijPluginDep("java"))
-        testRuntimeOnly(intellijPluginDep("java"))
-    }
+    compileOnly(intellijPluginDep("java"))
+    testCompileOnly(intellijPluginDep("java"))
+    testRuntimeOnly(intellijPluginDep("java"))
 }
 
 sourceSets {

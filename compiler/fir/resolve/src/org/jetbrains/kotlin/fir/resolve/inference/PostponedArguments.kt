@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirAnonymousFunction
 import org.jetbrains.kotlin.fir.expressions.FirCallableReferenceAccess
 import org.jetbrains.kotlin.fir.resolve.calls.Candidate
+import org.jetbrains.kotlin.fir.resolve.calls.ResolutionContext
 import org.jetbrains.kotlin.fir.resolve.createFunctionalType
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystemBuilder
@@ -19,17 +20,18 @@ fun Candidate.preprocessLambdaArgument(
     csBuilder: ConstraintSystemBuilder,
     argument: FirAnonymousFunction,
     expectedType: ConeKotlinType?,
-    expectedTypeRef: FirTypeRef,
+    expectedTypeRef: FirTypeRef?,
+    context: ResolutionContext,
     forceResolution: Boolean = false,
     returnTypeVariable: ConeTypeVariableForLambdaReturnType? = null
 ): PostponedResolvedAtom {
-    if (expectedType != null && !forceResolution && csBuilder.isTypeVariable(expectedType)) {
+    if (expectedType != null && expectedTypeRef != null && !forceResolution && csBuilder.isTypeVariable(expectedType)) {
         return LambdaWithTypeVariableAsExpectedTypeAtom(argument, expectedType, expectedTypeRef, this)
     }
 
     val resolvedArgument =
-        extractLambdaInfoFromFunctionalType(expectedType, expectedTypeRef, argument, returnTypeVariable, bodyResolveComponents, this)
-            ?: extraLambdaInfo(expectedType, argument, csBuilder, bodyResolveComponents.session, this)
+        extractLambdaInfoFromFunctionalType(expectedType, expectedTypeRef, argument, returnTypeVariable, context.bodyResolveComponents, this)
+            ?: extraLambdaInfo(expectedType, argument, csBuilder, context.session, this)
 
     if (expectedType != null) {
         // TODO: add SAM conversion processing
@@ -47,10 +49,11 @@ fun Candidate.preprocessLambdaArgument(
 
 fun Candidate.preprocessCallableReference(
     argument: FirCallableReferenceAccess,
-    expectedType: ConeKotlinType
+    expectedType: ConeKotlinType?,
+    context: ResolutionContext
 ) {
-    val lhs = bodyResolveComponents.doubleColonExpressionResolver.resolveDoubleColonLHS(argument)
-    postponedAtoms += ResolvedCallableReferenceAtom(argument, expectedType, lhs, bodyResolveComponents.session)
+    val lhs = context.bodyResolveComponents.doubleColonExpressionResolver.resolveDoubleColonLHS(argument)
+    postponedAtoms += ResolvedCallableReferenceAtom(argument, expectedType, lhs, context.session)
 }
 
 private fun extraLambdaInfo(

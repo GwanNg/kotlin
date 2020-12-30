@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2019 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -9,7 +9,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFileFactory
 import com.intellij.psi.impl.PsiFileFactoryImpl
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
-import org.jetbrains.kotlin.cli.common.messages.CompilerMessageLocation
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSourceLocation
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.common.messages.GroupingMessageCollector
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
@@ -85,7 +85,7 @@ class ReplMessageCollector : MessageCollector {
         messages.clear()
     }
 
-    override fun report(severity: CompilerMessageSeverity, message: String, location: CompilerMessageLocation?) {
+    override fun report(severity: CompilerMessageSeverity, message: String, location: CompilerMessageSourceLocation?) {
         if (severity == CompilerMessageSeverity.ERROR) hasErrors = true
         messages.add(Pair(severity, message))
     }
@@ -149,7 +149,7 @@ fun createCompileResult(lineId: LineId, code: String): ReplCompileResult.Compile
 
 class DependencyLoader {
     // TODO: this should be taken from CompilerConfiguration
-    private val commonPath = "libraries/stdlib/js-ir/build/fullRuntime/klib"
+    private val commonPath = "libraries/stdlib/js-ir/build/classes/kotlin/js/main/"
     private val mappedNamesPath = "$commonPath/mappedNames.txt"
     private val scriptDependencyBinaryPath = "$commonPath/scriptDependencyBinary.js"
 
@@ -172,7 +172,7 @@ class DependencyLoader {
 
     fun writeNames(nameTables: NameTables): ByteArray {
         val result = StringBuilder()
-        for (entry in nameTables.mappedNames) {
+        for (entry in nameTables.mappedNames.orEmpty()) {
             result.append("${entry.key} ${entry.value}" + System.lineSeparator())
         }
         return result.toString().toByteArray(Charset.defaultCharset())

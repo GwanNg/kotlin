@@ -15,7 +15,7 @@ import org.jetbrains.kotlin.fir.visitors.FirTransformer
 import org.jetbrains.kotlin.fir.visitors.FirVisitor
 import org.jetbrains.kotlin.fir.visitors.transformInplace
 
-open class FirUserTypeRefImpl(
+class FirUserTypeRefImpl(
     override val source: FirSourceElement?,
     override val isMarkedNullable: Boolean,
     override val qualifier: MutableList<FirQualifierPart>,
@@ -24,14 +24,14 @@ open class FirUserTypeRefImpl(
 
     override fun <R, D> acceptChildren(visitor: FirVisitor<R, D>, data: D) {
         for (part in qualifier) {
-            part.typeArguments.forEach { it.accept(visitor, data) }
+            part.typeArgumentList.typeArguments.forEach { it.accept(visitor, data) }
         }
         annotations.forEach { it.accept(visitor, data) }
     }
 
     override fun <D> transformChildren(transformer: FirTransformer<D>, data: D): FirUserTypeRefImpl {
         for (part in qualifier) {
-            (part.typeArguments as MutableList<FirTypeProjection>).transformInplace(transformer, data)
+            (part.typeArgumentList.typeArguments as MutableList<FirTypeProjection>).transformInplace(transformer, data)
         }
         transformAnnotations(transformer, data)
         return this

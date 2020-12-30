@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2018 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -38,14 +38,19 @@ abstract class AbstractSerialGenerator(val bindingContext: BindingContext, val c
         getKClassListFromFileAnnotation(
             SerializationAnnotations.contextualFqName,
             currentDeclaration
+        ).plus(
+            getKClassListFromFileAnnotation(
+                SerializationAnnotations.contextualOnFileFqName,
+                currentDeclaration
+            )
         ).toSet()
     }
 
-    val additionalSerializersInScopeOfCurrentFile: Map<ClassDescriptor, ClassDescriptor> by lazy {
+    val additionalSerializersInScopeOfCurrentFile: Map<KotlinType, ClassDescriptor> by lazy {
         getKClassListFromFileAnnotation(SerializationAnnotations.additionalSerializersFqName, currentDeclaration)
             .associateBy(
                 {
-                    it.supertypes().find(::isKSerializer)?.arguments?.firstOrNull()?.type.toClassDescriptor
+                    it.supertypes().find(::isKSerializer)?.arguments?.firstOrNull()?.type
                         ?: throw AssertionError("Argument for ${SerializationAnnotations.additionalSerializersFqName} does not implement KSerializer or does not provide serializer for concrete type")
                 },
                 { it.toClassDescriptor!! }

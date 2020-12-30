@@ -15,12 +15,12 @@ abstract class Flow {
     abstract fun getVariablesInTypeStatements(): Collection<RealVariable>
     abstract fun removeOperations(variable: DataFlowVariable): Collection<Implication>
 
-    abstract val directAliasMap: Map<RealVariable, RealVariable>
+    abstract val directAliasMap: Map<RealVariable, RealVariableAndType>
     abstract val backwardsAliasMap: Map<RealVariable, List<RealVariable>>
 }
 
 fun Flow.unwrapVariable(variable: RealVariable): RealVariable {
-    return directAliasMap[variable] ?: variable
+    return directAliasMap[variable]?.variable ?: variable
 }
 
 abstract class LogicSystem<FLOW : Flow>(protected val context: ConeInferenceContext) {
@@ -53,7 +53,7 @@ abstract class LogicSystem<FLOW : Flow>(protected val context: ConeInferenceCont
         shouldRemoveSynthetics: Boolean,
     ): FLOW
 
-    abstract fun addLocalVariableAlias(flow: FLOW, alias: RealVariable, underlyingVariable: RealVariable)
+    abstract fun addLocalVariableAlias(flow: FLOW, alias: RealVariable, underlyingVariable: RealVariableAndType)
     abstract fun removeLocalVariableAlias(flow: FLOW, alias: RealVariable)
 
     protected abstract fun getImplicationsWithVariable(flow: FLOW, variable: DataFlowVariable): Collection<Implication>
@@ -122,37 +122,39 @@ abstract class LogicSystem<FLOW : Flow>(protected val context: ConeInferenceCont
         return result
     }
 
-    protected fun or(statements: Collection<TypeStatement>): MutableTypeStatement {
+    private inline fun manipulateTypeStatements(
+        statements: Collection<TypeStatement>,
+        op: (Collection<Set<ConeKotlinType>>) -> MutableSet<ConeKotlinType>
+    ): MutableTypeStatement {
         require(statements.isNotEmpty())
         statements.singleOrNull()?.let { return it as MutableTypeStatement }
         val variable = statements.first().variable
         assert(statements.all { it.variable == variable })
-        val exactType = orForTypes(statements.map { it.exactType })
-        val exactNotType = orForTypes(statements.map { it.exactNotType })
+        val exactType = op.invoke(statements.map { it.exactType })
+        val exactNotType = op.invoke(statements.map { it.exactNotType })
         return MutableTypeStatement(variable, exactType, exactNotType)
     }
+
+    protected fun or(statements: Collection<TypeStatement>): MutableTypeStatement =
+        manipulateTypeStatements(statements, ::orForTypes)
 
     private fun orForTypes(types: Collection<Set<ConeKotlinType>>): MutableSet<ConeKotlinType> {
         if (types.any { it.isEmpty() }) return mutableSetOf()
-        val allTypes = types.flatMapTo(mutableSetOf()) { it }
-        val commonTypes = allTypes.toMutableSet()
-        types.forEach { commonTypes.retainAll(it) }
-        val differentTypes = types.mapNotNull { (it - commonTypes).takeIf { it.isNotEmpty() } }
-        if (differentTypes.size == types.size) {
-            context.commonSuperTypeOrNull(differentTypes.flatten())?.let { commonTypes += it }
+        val intersectedTypes = types.map {
+            if (it.size > 1) {
+                context.intersectTypes(it.toList()) as ConeKotlinType
+            } else {
+                assert(it.size == 1) { "We've already checked each set of types is not empty." }
+                it.single()
+            }
         }
-        return commonTypes
+        val result = mutableSetOf<ConeKotlinType>()
+        context.commonSuperTypeOrNull(intersectedTypes)?.let { result.add(it) }
+        return result
     }
 
-    protected fun and(statements: Collection<TypeStatement>): MutableTypeStatement {
-        require(statements.isNotEmpty())
-        statements.singleOrNull()?.let { return it as MutableTypeStatement }
-        val variable = statements.first().variable
-        assert(statements.all { it.variable == variable })
-        val exactType = andForTypes(statements.map { it.exactType })
-        val exactNotType = andForTypes(statements.map { it.exactNotType })
-        return MutableTypeStatement(variable, exactType, exactNotType)
-    }
+    protected fun and(statements: Collection<TypeStatement>): MutableTypeStatement =
+        manipulateTypeStatements(statements, ::andForTypes)
 
     private fun andForTypes(types: Collection<Set<ConeKotlinType>>): MutableSet<ConeKotlinType> {
         return types.flatMapTo(mutableSetOf()) { it }

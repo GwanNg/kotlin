@@ -20,6 +20,8 @@ FILE fqName:<root> fileName:/superCalls.kt
             GET_FIELD 'FIELD PROPERTY_BACKING_FIELD name:bar type:kotlin.String visibility:private [final]' type=kotlin.String origin=null
               receiver: GET_VAR '<this>: <root>.Base declared in <root>.Base.<get-bar>' type=<root>.Base origin=null
     FUN name:hashCode visibility:public modality:OPEN <> ($this:<root>.Base) returnType:kotlin.Int
+      overridden:
+        public open fun hashCode (): kotlin.Int declared in kotlin.Any
       $this: VALUE_PARAMETER name:<this> type:<root>.Base
       BLOCK_BODY
         RETURN type=kotlin.Nothing from='public open fun hashCode (): kotlin.Int declared in <root>.Base'
@@ -50,6 +52,8 @@ FILE fqName:<root> fileName:/superCalls.kt
     PROPERTY name:bar visibility:public modality:FINAL [val]
       FUN name:<get-bar> visibility:public modality:FINAL <> ($this:<root>.Derived) returnType:kotlin.String
         correspondingProperty: PROPERTY name:bar visibility:public modality:FINAL [val]
+        overridden:
+          public open fun <get-bar> (): kotlin.String declared in <root>.Base
         $this: VALUE_PARAMETER name:<this> type:<root>.Derived
         BLOCK_BODY
           RETURN type=kotlin.Nothing from='public final fun <get-bar> (): kotlin.String declared in <root>.Derived'

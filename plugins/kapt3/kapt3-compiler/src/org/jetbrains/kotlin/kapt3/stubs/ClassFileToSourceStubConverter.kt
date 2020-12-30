@@ -25,11 +25,11 @@ import com.sun.tools.javac.tree.TreeMaker
 import com.sun.tools.javac.tree.TreeScanner
 import kotlinx.kapt.KaptIgnored
 import org.jetbrains.kotlin.base.kapt3.KaptFlag
+import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.codegen.AsmUtil
 import org.jetbrains.kotlin.codegen.coroutines.CONTINUATION_PARAMETER_NAME
 import org.jetbrains.kotlin.codegen.needsExperimentalCoroutinesWrapper
 import org.jetbrains.kotlin.config.LanguageFeature
-import org.jetbrains.kotlin.config.LanguageVersionSettingsImpl
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
@@ -52,7 +52,6 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DelegatingBindingTrace
-import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
 import org.jetbrains.kotlin.resolve.calls.model.DefaultValueArgument
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedValueArgument
@@ -61,10 +60,12 @@ import org.jetbrains.kotlin.resolve.constants.evaluate.ConstantExpressionEvaluat
 import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameOrNull
 import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameSafe
 import org.jetbrains.kotlin.resolve.descriptorUtil.getSuperClassOrAny
+import org.jetbrains.kotlin.resolve.descriptorUtil.isCompanionObject
 import org.jetbrains.kotlin.resolve.source.PsiSourceElement
 import org.jetbrains.kotlin.types.ErrorUtils
 import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.isError
+import org.jetbrains.kotlin.types.typeUtil.isEnum
 import org.jetbrains.org.objectweb.asm.Opcodes
 import org.jetbrains.org.objectweb.asm.Type
 import org.jetbrains.org.objectweb.asm.tree.*
@@ -96,6 +97,8 @@ class ClassFileToSourceStubConverter(val kaptContext: KaptContextForStubGenerati
             "kotlin.jvm." // Kotlin annotations from runtime
         )
 
+        private val KOTLIN_METADATA_ANNOTATION = Metadata::class.java.name
+
         private val NON_EXISTENT_CLASS_NAME = FqName("error.NonExistentClass")
 
         private val JAVA_KEYWORD_FILTER_REGEX = "[a-z]+".toRegex()
@@ -108,6 +111,7 @@ class ClassFileToSourceStubConverter(val kaptContext: KaptContextForStubGenerati
 
     private val correctErrorTypes = kaptContext.options[KaptFlag.CORRECT_ERROR_TYPES]
     private val strictMode = kaptContext.options[KaptFlag.STRICT]
+    private val stripMetadata = kaptContext.options[KaptFlag.STRIP_METADATA]
 
     private val mutableBindings = mutableMapOf<String, KaptJavaFileObject>()
 
@@ -383,11 +387,21 @@ class ClassFileToSourceStubConverter(val kaptContext: KaptContextForStubGenerati
             )
         }
 
-        val fields = mapJList<FieldNode, JCTree>(clazz.fields) {
+        //   Class methods and fields are currently sorted at serialization (see DescriptorSerializer.sort) and at deserialization (see
+        // DeserializedMemberScope.OptimizedImplementation#addMembers). Therefore, the contents of the generated stub files are sorted in
+        // incremental builds but not in clean builds.
+        //   The consequence is that the contents of the generated stub files may not be consistent across a clean build and an incremental
+        // build, making the build non-deterministic and dependent tasks run unnecessarily (see KT-40882).
+        //   To work around that, we always sort class methods and fields when outputting stub files. Once we remove the sorting at both
+        // serialization and deserialization (KT-20980), we can remove this workaround.
+        val sortedFields = clazz.fields.toList().sortedWith(compareBy({ it.name }, { it.desc }))
+        val sortedMethods = clazz.methods.toList().sortedWith(compareBy({ it.name }, { it.desc }))
+
+        val fields = mapJList<FieldNode, JCTree>(sortedFields) {
             if (it.isEnumValue()) null else convertField(it, clazz, lineMappings, packageFqName)
         }
 
-        val methods = mapJList<MethodNode, JCTree>(clazz.methods) {
+        val methods = mapJList<MethodNode, JCTree>(sortedMethods) {
             if (isEnum) {
                 if (it.name == "values" && it.desc == "()[L${clazz.name};") return@mapJList null
                 if (it.name == "valueOf" && it.desc == "(Ljava/lang/String;)L${clazz.name};") return@mapJList null
@@ -650,7 +664,12 @@ class ClassFileToSourceStubConverter(val kaptContext: KaptContextForStubGenerati
         val value = field.value
 
         val origin = kaptContext.origins[field]
-        val propertyInitializer = (origin?.element as? KtProperty)?.initializer
+
+        val propertyInitializer = when (val declaration = origin?.element) {
+            is KtProperty -> declaration.initializer
+            is KtParameter -> if (kaptContext.options[KaptFlag.DUMP_DEFAULT_PARAMETER_VALUES]) declaration.defaultValue else null
+            else -> null
+        }
 
         if (value != null) {
             if (propertyInitializer != null) {
@@ -661,13 +680,22 @@ class ClassFileToSourceStubConverter(val kaptContext: KaptContextForStubGenerati
         }
 
         val propertyType = (origin?.descriptor as? PropertyDescriptor)?.returnType
+
+        /*
+            Work-around for enum classes in companions.
+            In expressions "Foo.Companion.EnumClass", Java prefers static field over a type name, making the reference invalid.
+        */
+        if (propertyType != null && propertyType.isEnum()) {
+            val enumClass = propertyType.constructor.declarationDescriptor
+            if (enumClass is ClassDescriptor && enumClass.isInsideCompanionObject()) {
+                return null
+            }
+        }
+
         if (propertyInitializer != null && propertyType != null) {
-            val moduleDescriptor = kaptContext.generationState.module
-            val evaluator = ConstantExpressionEvaluator(moduleDescriptor, LanguageVersionSettingsImpl.DEFAULT, kaptContext.project)
-            val trace = DelegatingBindingTrace(kaptContext.bindingContext, "Kapt")
-            val const = evaluator.evaluateExpression(propertyInitializer, trace, propertyType)
-            if (const != null && !const.isError && const.canBeUsedInAnnotations && !const.usesNonConstValAsConstant) {
-                val asmValue = mapConstantValueToAsmRepresentation(const.toConstantValue(propertyType))
+            val constValue = getConstantValue(propertyInitializer, propertyType)
+            if (constValue != null) {
+                val asmValue = mapConstantValueToAsmRepresentation(constValue)
                 if (asmValue !== UnknownConstantValue) {
                     return convertConstantValueArguments(asmValue, listOf(propertyInitializer))
                 }
@@ -682,7 +710,28 @@ class ClassFileToSourceStubConverter(val kaptContext: KaptContextForStubGenerati
         return null
     }
 
+    private fun DeclarationDescriptor.isInsideCompanionObject(): Boolean {
+        val parent = containingDeclaration ?: return false
+        if (parent.isCompanionObject()) {
+            return true
+        }
+
+        return parent.isInsideCompanionObject()
+    }
+
     private object UnknownConstantValue
+
+    private fun getConstantValue(expression: KtExpression, expectedType: KotlinType): ConstantValue<*>? {
+        val moduleDescriptor = kaptContext.generationState.module
+        val languageVersionSettings = kaptContext.generationState.languageVersionSettings
+        val evaluator = ConstantExpressionEvaluator(moduleDescriptor, languageVersionSettings, kaptContext.project)
+        val trace = DelegatingBindingTrace(kaptContext.bindingContext, "Kapt")
+        val const = evaluator.evaluateExpression(expression, trace, expectedType)
+        if (const == null || const.isError || !const.canBeUsedInAnnotations || const.usesNonConstValAsConstant) {
+            return null
+        }
+        return const.toConstantValue(expectedType)
+    }
 
     private fun mapConstantValueToAsmRepresentation(value: ConstantValue<*>): Any? {
         return when (value) {
@@ -774,6 +823,10 @@ class ClassFileToSourceStubConverter(val kaptContext: KaptContextForStubGenerati
                 method.access.toLong(),
             ElementKind.METHOD, packageFqName, visibleAnnotations, method.invisibleAnnotations, descriptor.annotations
         )
+
+        if (containingClass.isInterface() && !method.isAbstract() && !method.isStatic()) {
+            modifiers.flags = modifiers.flags or Flags.DEFAULT
+        }
 
         val asmReturnType = Type.getReturnType(method.desc)
         val jcReturnType = if (isConstructor) null else treeMaker.Type(asmReturnType)
@@ -932,8 +985,8 @@ class ClassFileToSourceStubConverter(val kaptContext: KaptContextForStubGenerati
                 && kaptContext.generationState.languageVersionSettings.supportsFeature(LanguageFeature.ReleaseCoroutines)
 
         return when (areCoroutinesReleased) {
-            true -> DescriptorUtils.CONTINUATION_INTERFACE_FQ_NAME_RELEASE
-            false -> DescriptorUtils.CONTINUATION_INTERFACE_FQ_NAME_EXPERIMENTAL
+            true -> StandardNames.CONTINUATION_INTERFACE_FQ_NAME_RELEASE
+            false -> StandardNames.CONTINUATION_INTERFACE_FQ_NAME_EXPERIMENTAL
         }
     }
 
@@ -1050,6 +1103,7 @@ class ClassFileToSourceStubConverter(val kaptContext: KaptContextForStubGenerati
 
         if (filtered) {
             if (BLACKLISTED_ANNOTATIONS.any { fqName.startsWith(it) }) return null
+            if (stripMetadata && fqName == KOTLIN_METADATA_ANNOTATION) return null
         }
 
         val ktAnnotation = (annotationDescriptor?.source as? PsiSourceElement)?.psi as? KtAnnotationEntry

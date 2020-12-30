@@ -47,6 +47,7 @@ dependencies {
     testRuntime(project(":kotlin-scripting-idea"))
     testRuntime(project(":kotlinx-serialization-ide-plugin"))
     testRuntime(project(":plugins:lint"))
+    testRuntime(project(":plugins:parcelize:parcelize-ide"))
     testRuntime(intellijPluginDep("junit"))
     testRuntime(intellijPluginDep("IntelliLang"))
     testRuntime(intellijPluginDep("properties"))
@@ -65,6 +66,10 @@ dependencies {
 
     if (Ide.AS36.orHigher()) {
         testRuntime(intellijPluginDep("android-layoutlib"))
+    }
+
+    if (Ide.AS41.orHigher()) {
+        testRuntime(intellijPluginDep("platform-images"))
     }
 }
 

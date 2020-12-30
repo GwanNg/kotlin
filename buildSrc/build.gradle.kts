@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 extra["versions.native-platform"] = "0.14"
 
 buildscript {
@@ -5,8 +7,7 @@ buildscript {
     val cacheRedirectorEnabled = findProperty("cacheRedirectorEnabled")?.toString()?.toBoolean() == true
 
     extra["defaultSnapshotVersion"] = kotlinBuildProperties.defaultSnapshotVersion
-    BootstrapOption.BintrayBootstrap("1.4.0-dev-1818", cacheRedirectorEnabled).applyToProject(project)
-//    kotlinBootstrapFrom(BootstrapOption.BintrayBootstrap(kotlinBuildProperties.kotlinBootstrapVersion!!, cacheRedirectorEnabled))
+    kotlinBootstrapFrom(BootstrapOption.SpaceBootstrap(kotlinBuildProperties.kotlinBootstrapVersion!!, cacheRedirectorEnabled))
 
     repositories {
         if (cacheRedirectorEnabled) {
@@ -23,7 +24,7 @@ buildscript {
     }
 
     dependencies {
-        classpath("org.jetbrains.kotlin:kotlin-build-gradle-plugin:0.0.17")
+        classpath("org.jetbrains.kotlin:kotlin-build-gradle-plugin:0.0.21")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${project.bootstrapKotlinVersion}")
         classpath("org.jetbrains.kotlin:kotlin-sam-with-receiver:${project.bootstrapKotlinVersion}")
     }
@@ -73,7 +74,6 @@ rootProject.apply {
 val isTeamcityBuild = kotlinBuildProperties.isTeamcityBuild
 val intellijUltimateEnabled by extra(kotlinBuildProperties.intellijUltimateEnabled)
 val intellijSeparateSdks by extra(project.getBooleanProperty("intellijSeparateSdks") ?: false)
-val verifyDependencyOutput by extra( getBooleanProperty("kotlin.build.dependency.output.verification") ?: isTeamcityBuild)
 
 extra["intellijReleaseType"] = when {
     extra["versions.intellijSdk"]?.toString()?.contains("-EAP-") == true -> "snapshots"
@@ -98,7 +98,9 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib", embeddedKotlinVersion))
-    implementation("org.jetbrains.kotlin:kotlin-build-gradle-plugin:0.0.17")
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${project.bootstrapKotlinVersion}")
+    implementation("org.jetbrains.kotlin:kotlin-build-gradle-plugin:0.0.21")
+    implementation("com.gradle.publish:plugin-publish-plugin:0.12.0")
 
     implementation("net.rubygrapefruit:native-platform:${property("versions.native-platform")}")
     implementation("net.rubygrapefruit:native-platform-windows-amd64:${property("versions.native-platform")}")
@@ -107,9 +109,12 @@ dependencies {
 
     implementation("com.github.jengelman.gradle.plugins:shadow:${rootProject.extra["versions.shadow"]}")
     implementation("net.sf.proguard:proguard-gradle:6.2.2")
-    implementation("org.jetbrains.intellij.deps:asm-all:7.0.1")
+    implementation("org.jetbrains.intellij.deps:asm-all:8.0.1")
 
     implementation("gradle.plugin.org.jetbrains.gradle.plugin.idea-ext:gradle-idea-ext:0.5")
+
+    implementation("org.gradle:test-retry-gradle-plugin:1.1.9")
+    implementation("com.gradle.enterprise:test-distribution-gradle-plugin:1.2.1")
 }
 
 samWithReceiver {
@@ -122,6 +127,11 @@ fun Project.`samWithReceiver`(configure: org.jetbrains.kotlin.samWithReceiver.gr
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+tasks.withType<KotlinCompile>().configureEach {
+    kotlinOptions.freeCompilerArgs +=
+        listOf("-Xopt-in=kotlin.RequiresOptIn", "-Xskip-runtime-version-check")
 }
 
 tasks["build"].dependsOn(":prepare-deps:build")

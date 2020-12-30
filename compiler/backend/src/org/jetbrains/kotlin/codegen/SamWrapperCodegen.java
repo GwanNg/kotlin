@@ -19,6 +19,9 @@ package org.jetbrains.kotlin.codegen;
 import kotlin.text.StringsKt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.backend.common.CodegenUtil;
+import org.jetbrains.kotlin.codegen.context.ClassContext;
+import org.jetbrains.kotlin.codegen.context.CodegenContext;
+import org.jetbrains.kotlin.codegen.context.FieldOwnerContext;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper;
 import org.jetbrains.kotlin.descriptors.*;
@@ -32,6 +35,7 @@ import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin;
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOriginKt;
+import org.jetbrains.kotlin.resolve.scopes.MemberScope;
 import org.jetbrains.kotlin.storage.LockBasedStorageManager;
 import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.util.OperatorNameConventions;
@@ -42,8 +46,11 @@ import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter;
 import org.jetbrains.org.objectweb.asm.commons.Method;
 
 import java.util.Collections;
+import java.util.Map;
 
-import static org.jetbrains.kotlin.codegen.AsmUtil.*;
+import static org.jetbrains.kotlin.codegen.AsmUtil.NO_FLAG_PACKAGE_PRIVATE;
+import static org.jetbrains.kotlin.codegen.AsmUtil.asmTypeByFqNameWithoutInnerClasses;
+import static org.jetbrains.kotlin.codegen.DescriptorAsmUtil.genAreEqualCall;
 import static org.jetbrains.kotlin.resolve.jvm.AsmTypes.*;
 import static org.jetbrains.org.objectweb.asm.Opcodes.*;
 
@@ -57,6 +64,7 @@ public class SamWrapperCodegen {
     private final SamType samType;
     private final MemberCodegen<?> parentCodegen;
     private final int visibility;
+    private final int classFlags;
     public static final String SAM_WRAPPER_SUFFIX = "$0";
 
     public SamWrapperCodegen(
@@ -71,6 +79,7 @@ public class SamWrapperCodegen {
         this.samType = samType;
         this.parentCodegen = parentCodegen;
         visibility = isInsideInline ? ACC_PUBLIC : NO_FLAG_PACKAGE_PRIVATE;
+        classFlags = visibility | ACC_FINAL | ACC_SUPER;
     }
 
     @NotNull
@@ -87,7 +96,7 @@ public class SamWrapperCodegen {
 
         boolean isKotlinFunInterface = !(samType.getClassDescriptor() instanceof JavaClassDescriptor);
 
-        ClassDescriptor classDescriptor = new ClassDescriptorImpl(
+        ClassDescriptorImpl classDescriptor = new ClassDescriptorImpl(
                 samType.getClassDescriptor().getContainingDeclaration(),
                 fqName.shortName(),
                 Modality.FINAL,
@@ -97,11 +106,13 @@ public class SamWrapperCodegen {
                 /* isExternal = */ false,
                 LockBasedStorageManager.NO_LOCKS
         );
+        classDescriptor.initialize(MemberScope.Empty.INSTANCE, Collections.emptySet(), null);
+
         // e.g. compare(T, T)
         SimpleFunctionDescriptor erasedInterfaceFunction = samType.getOriginalAbstractMethod().copy(
                 classDescriptor,
                 Modality.FINAL,
-                Visibilities.PUBLIC,
+                DescriptorVisibilities.PUBLIC,
                 CallableMemberDescriptor.Kind.SYNTHESIZED,
                 /*copyOverrides=*/ false
         );
@@ -114,7 +125,7 @@ public class SamWrapperCodegen {
         cv.defineClass(
                 file,
                 state.getClassFileVersion(),
-                ACC_FINAL | ACC_SUPER | visibility,
+                classFlags,
                 asmType.getInternalName(),
                 null,
                 OBJECT_TYPE.getInternalName(),
@@ -123,6 +134,8 @@ public class SamWrapperCodegen {
         cv.visitSource(file.getName(), null);
 
         WriteAnnotationUtilKt.writeSyntheticClassMetadata(cv, state);
+
+        generateInnerClassInformation(file, asmType, cv);
 
         // e.g. ASM type for Function2
         Type functionAsmType = typeMapper.mapType(functionType);
@@ -135,17 +148,40 @@ public class SamWrapperCodegen {
                     null);
 
         generateConstructor(asmType, functionAsmType, cv);
-        generateMethod(asmType, functionAsmType, cv, erasedInterfaceFunction, functionType);
+
+        ClassContext context = state.getRootContext().intoClass(classDescriptor, OwnerKind.IMPLEMENTATION, state);
+        FunctionCodegen functionCodegen = new FunctionCodegen(context, cv, state, parentCodegen);
+        generateMethod(asmType, functionAsmType, erasedInterfaceFunction, functionType, functionCodegen);
 
         if (isKotlinFunInterface) {
             generateGetFunctionDelegate(cv, asmType, functionAsmType);
             generateEquals(cv, asmType, functionAsmType, samAsmType);
             generateHashCode(cv, asmType, functionAsmType);
+
+            generateDelegatesToDefaultImpl(asmType, classDescriptor, samType.getClassDescriptor(), functionCodegen, state);
         }
 
         cv.done();
 
         return asmType;
+    }
+
+    private void generateInnerClassInformation(@NotNull KtFile file, Type asmType, ClassBuilder cv) {
+        parentCodegen.addSyntheticAnonymousInnerClass(new SyntheticInnerClassInfo(asmType.getInternalName(), classFlags));
+        FieldOwnerContext<?> parentContext = parentCodegen.context;
+        CodegenContext<?> outerContext = MemberCodegen.getNonInlineOuterContext(parentContext);
+        assert outerContext != null :
+                "Outer context for SAM wrapper " + asmType.getInternalName() + " is null, parentContext:" + parentContext;
+        Type outerClassType = MemberCodegen.computeOuterClass(state.getTypeMapper(), state.getJvmDefaultMode(), file, outerContext);
+        assert outerClassType != null :
+                "Outer class for SAM wrapper " + asmType.getInternalName() + " is null, parentContext:" + parentContext;
+        Method enclosingMethod = MemberCodegen.computeEnclosingMethod(state.getTypeMapper(), outerContext);
+        cv.visitOuterClass(
+                outerClassType.getInternalName(),
+                enclosingMethod == null ? null : enclosingMethod.getName(),
+                enclosingMethod == null ? null : enclosingMethod.getDescriptor()
+        );
+        cv.visitInnerClass(asmType.getInternalName(), null, null, classFlags);
     }
 
     private void generateConstructor(Type ownerType, Type functionType, ClassBuilder cv) {
@@ -171,25 +207,22 @@ public class SamWrapperCodegen {
     }
 
     private void generateMethod(
-            Type ownerType,
-            Type functionType,
-            ClassBuilder cv,
-            SimpleFunctionDescriptor erasedInterfaceFunction,
-            KotlinType functionJetType
+            @NotNull Type ownerType,
+            @NotNull Type functionType,
+            @NotNull SimpleFunctionDescriptor erasedInterfaceFunction,
+            @NotNull KotlinType functionKotlinType,
+            @NotNull FunctionCodegen functionCodegen
     ) {
-        // using root context to avoid creating ClassDescriptor and everything else
-        FunctionCodegen codegen = new FunctionCodegen(state.getRootContext().intoClass(
-                (ClassDescriptor) erasedInterfaceFunction.getContainingDeclaration(), OwnerKind.IMPLEMENTATION, state), cv, state, parentCodegen);
-
-        FunctionDescriptor invokeFunction =
-                functionJetType.getMemberScope().getContributedFunctions(OperatorNameConventions.INVOKE, NoLookupLocation.FROM_BACKEND).iterator().next().getOriginal();
+        FunctionDescriptor invokeFunction = functionKotlinType.getMemberScope().getContributedFunctions(
+                OperatorNameConventions.INVOKE, NoLookupLocation.FROM_BACKEND
+        ).iterator().next().getOriginal();
         StackValue functionField = StackValue.field(functionType, ownerType, FUNCTION_FIELD_NAME, false, StackValue.none());
-        codegen.genSamDelegate(erasedInterfaceFunction, invokeFunction, functionField);
+        functionCodegen.genSamDelegate(erasedInterfaceFunction, invokeFunction, functionField);
 
         // generate sam bridges
         // TODO: erasedInterfaceFunction is actually not an interface function, but function in generated class
         SimpleFunctionDescriptor originalInterfaceErased = samType.getOriginalAbstractMethod();
-        ClosureCodegen.generateBridgesForSAM(originalInterfaceErased, erasedInterfaceFunction, codegen);
+        ClosureCodegen.generateBridgesForSAM(originalInterfaceErased, erasedInterfaceFunction, functionCodegen);
     }
 
     private static void generateEquals(
@@ -246,6 +279,31 @@ public class SamWrapperCodegen {
         iv.getfield(asmType.getInternalName(), FUNCTION_FIELD_NAME, functionAsmType.getDescriptor());
         iv.areturn(OBJECT_TYPE);
         FunctionCodegen.endVisit(iv, "getFunctionDelegate of SAM wrapper");
+    }
+
+    public static void generateDelegatesToDefaultImpl(
+            @NotNull Type asmType,
+            @NotNull ClassDescriptor classDescriptor,
+            @NotNull ClassDescriptor funInterface,
+            @NotNull FunctionCodegen functionCodegen,
+            @NotNull GenerationState state
+    ) {
+        JvmKotlinType receiverType = new JvmKotlinType(asmType, classDescriptor.getDefaultType());
+
+        for (DeclarationDescriptor descriptor : DescriptorUtils.getAllDescriptors(funInterface.getDefaultType().getMemberScope())) {
+            if (!(descriptor instanceof CallableMemberDescriptor)) continue;
+            CallableMemberDescriptor member = (CallableMemberDescriptor) descriptor;
+            if (member.getModality() == Modality.ABSTRACT ||
+                DescriptorVisibilities.isPrivate(member.getVisibility()) ||
+                member.getVisibility() == DescriptorVisibilities.INVISIBLE_FAKE ||
+                DescriptorUtils.isMethodOfAny(member)) continue;
+
+            for (Map.Entry<FunctionDescriptor, FunctionDescriptor> entry : CodegenUtil.INSTANCE.copyFunctions(
+                    member, member, classDescriptor, Modality.OPEN, DescriptorVisibilities.PUBLIC, CallableMemberDescriptor.Kind.DECLARATION, false
+            ).entrySet()) {
+                ClassBodyCodegen.generateDelegationToDefaultImpl(entry.getKey(), entry.getValue(), receiverType, functionCodegen, state, false);
+            }
+        }
     }
 
     @NotNull

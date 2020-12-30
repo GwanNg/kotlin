@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.incremental;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.util.KtTestUtil;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.runner.RunWith;
 
@@ -62,7 +63,7 @@ public class IncrementalJsCompilerRunnerWithMetadataOnlyTestGenerated extends Ab
         }
 
         public void testAllFilesPresentInPureKotlin() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("jps-plugin/testData/incremental/pureKotlin"), Pattern.compile("^([^\\.]+)$"), null, false);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("jps-plugin/testData/incremental/pureKotlin"), Pattern.compile("^([^\\.]+)$"), null, false);
         }
 
         @TestMetadata("annotations")
@@ -308,6 +309,11 @@ public class IncrementalJsCompilerRunnerWithMetadataOnlyTestGenerated extends Ab
         @TestMetadata("inlineUsedWhereDeclared")
         public void testInlineUsedWhereDeclared() throws Exception {
             runTest("jps-plugin/testData/incremental/pureKotlin/inlineUsedWhereDeclared/");
+        }
+
+        @TestMetadata("innerClassesFromSupertypes")
+        public void testInnerClassesFromSupertypes() throws Exception {
+            runTest("jps-plugin/testData/incremental/pureKotlin/innerClassesFromSupertypes/");
         }
 
         @TestMetadata("internalClassChanged")
@@ -565,6 +571,31 @@ public class IncrementalJsCompilerRunnerWithMetadataOnlyTestGenerated extends Ab
             runTest("jps-plugin/testData/incremental/pureKotlin/returnTypeChanged/");
         }
 
+        @TestMetadata("sealedClassesAddImplements")
+        public void testSealedClassesAddImplements() throws Exception {
+            runTest("jps-plugin/testData/incremental/pureKotlin/sealedClassesAddImplements/");
+        }
+
+        @TestMetadata("sealedClassesAddInheritor")
+        public void testSealedClassesAddInheritor() throws Exception {
+            runTest("jps-plugin/testData/incremental/pureKotlin/sealedClassesAddInheritor/");
+        }
+
+        @TestMetadata("sealedClassesRemoveImplements")
+        public void testSealedClassesRemoveImplements() throws Exception {
+            runTest("jps-plugin/testData/incremental/pureKotlin/sealedClassesRemoveImplements/");
+        }
+
+        @TestMetadata("sealedClassesRemoveInheritor")
+        public void testSealedClassesRemoveInheritor() throws Exception {
+            runTest("jps-plugin/testData/incremental/pureKotlin/sealedClassesRemoveInheritor/");
+        }
+
+        @TestMetadata("sealedClassesUseSwitch")
+        public void testSealedClassesUseSwitch() throws Exception {
+            runTest("jps-plugin/testData/incremental/pureKotlin/sealedClassesUseSwitch/");
+        }
+
         @TestMetadata("secondaryConstructorInlined")
         public void testSecondaryConstructorInlined() throws Exception {
             runTest("jps-plugin/testData/incremental/pureKotlin/secondaryConstructorInlined/");
@@ -630,7 +661,7 @@ public class IncrementalJsCompilerRunnerWithMetadataOnlyTestGenerated extends Ab
         }
 
         public void testAllFilesPresentInClassHierarchyAffected() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("jps-plugin/testData/incremental/classHierarchyAffected"), Pattern.compile("^([^\\.]+)$"), null, false);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("jps-plugin/testData/incremental/classHierarchyAffected"), Pattern.compile("^([^\\.]+)$"), null, false);
         }
 
         @TestMetadata("annotationFlagRemoved")
@@ -743,6 +774,11 @@ public class IncrementalJsCompilerRunnerWithMetadataOnlyTestGenerated extends Ab
             runTest("jps-plugin/testData/incremental/classHierarchyAffected/inferredTypeChanged/");
         }
 
+        @TestMetadata("interfaceAnyMethods")
+        public void testInterfaceAnyMethods() throws Exception {
+            runTest("jps-plugin/testData/incremental/classHierarchyAffected/interfaceAnyMethods/");
+        }
+
         @TestMetadata("lambdaParameterAffected")
         public void testLambdaParameterAffected() throws Exception {
             runTest("jps-plugin/testData/incremental/classHierarchyAffected/lambdaParameterAffected/");
@@ -838,7 +874,7 @@ public class IncrementalJsCompilerRunnerWithMetadataOnlyTestGenerated extends Ab
         }
 
         public void testAllFilesPresentInJs() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("jps-plugin/testData/incremental/js"), Pattern.compile("^([^\\.]+)$"), null, true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("jps-plugin/testData/incremental/js"), Pattern.compile("^([^\\.]+)$"), null, true);
         }
 
         @TestMetadata("inlineFunctionLocalDeclarationChanges")
@@ -855,7 +891,7 @@ public class IncrementalJsCompilerRunnerWithMetadataOnlyTestGenerated extends Ab
             }
 
             public void testAllFilesPresentInFriendsModuleDisabled() throws Exception {
-                KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("jps-plugin/testData/incremental/js/friendsModuleDisabled"), Pattern.compile("^([^\\.]+)$"), null, true);
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("jps-plugin/testData/incremental/js/friendsModuleDisabled"), Pattern.compile("^([^\\.]+)$"), null, true);
             }
 
             @TestMetadata("internalInlineFunctionIsChanged")
@@ -872,7 +908,7 @@ public class IncrementalJsCompilerRunnerWithMetadataOnlyTestGenerated extends Ab
                 }
 
                 public void testAllFilesPresentInInternalInlineFunctionIsChanged() throws Exception {
-                    KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("jps-plugin/testData/incremental/js/friendsModuleDisabled/internalInlineFunctionIsChanged"), Pattern.compile("^([^\\.]+)$"), null, true);
+                    KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("jps-plugin/testData/incremental/js/friendsModuleDisabled/internalInlineFunctionIsChanged"), Pattern.compile("^([^\\.]+)$"), null, true);
                 }
             }
         }
@@ -886,7 +922,7 @@ public class IncrementalJsCompilerRunnerWithMetadataOnlyTestGenerated extends Ab
             }
 
             public void testAllFilesPresentInInlineFunctionLocalDeclarationChanges() throws Exception {
-                KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("jps-plugin/testData/incremental/js/inlineFunctionLocalDeclarationChanges"), Pattern.compile("^([^\\.]+)$"), null, true);
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("jps-plugin/testData/incremental/js/inlineFunctionLocalDeclarationChanges"), Pattern.compile("^([^\\.]+)$"), null, true);
             }
         }
     }

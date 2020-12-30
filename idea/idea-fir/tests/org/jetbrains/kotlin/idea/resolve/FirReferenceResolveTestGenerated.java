@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.idea.resolve;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.util.KtTestUtil;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.runner.RunWith;
 
@@ -25,7 +26,7 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
     }
 
     public void testAllFilesPresentInReferences() throws Exception {
-        KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+        KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
     }
 
     @TestMetadata("AnnotationForClass.kt")
@@ -308,6 +309,21 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
         runTest("idea/testData/resolve/references/ResolvePackageInProperty.kt");
     }
 
+    @TestMetadata("ResolvePackageInTheEndInProperty.kt")
+    public void testResolvePackageInTheEndInProperty() throws Exception {
+        runTest("idea/testData/resolve/references/ResolvePackageInTheEndInProperty.kt");
+    }
+
+    @TestMetadata("ResolvePackageInTheMiddleInProperty.kt")
+    public void testResolvePackageInTheMiddleInProperty() throws Exception {
+        runTest("idea/testData/resolve/references/ResolvePackageInTheMiddleInProperty.kt");
+    }
+
+    @TestMetadata("ResolvePackageInTheTypeNameInProperty.kt")
+    public void testResolvePackageInTheTypeNameInProperty() throws Exception {
+        runTest("idea/testData/resolve/references/ResolvePackageInTheTypeNameInProperty.kt");
+    }
+
     @TestMetadata("SamAdapter.kt")
     public void testSamAdapter() throws Exception {
         runTest("idea/testData/resolve/references/SamAdapter.kt");
@@ -403,6 +419,52 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
         runTest("idea/testData/resolve/references/WrongNumberOfTypeArgumentsInSupertype.kt");
     }
 
+    @TestMetadata("idea/testData/resolve/references/arrayAccess")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class ArrayAccess extends AbstractFirReferenceResolveTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+        }
+
+        public void testAllFilesPresentInArrayAccess() throws Exception {
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/arrayAccess"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+        }
+
+        @TestMetadata("get.kt")
+        public void testGet() throws Exception {
+            runTest("idea/testData/resolve/references/arrayAccess/get.kt");
+        }
+
+        @TestMetadata("set.kt")
+        public void testSet() throws Exception {
+            runTest("idea/testData/resolve/references/arrayAccess/set.kt");
+        }
+    }
+
+    @TestMetadata("idea/testData/resolve/references/constructorDelegatingReference")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class ConstructorDelegatingReference extends AbstractFirReferenceResolveTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+        }
+
+        public void testAllFilesPresentInConstructorDelegatingReference() throws Exception {
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/constructorDelegatingReference"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+        }
+
+        @TestMetadata("toPrimary.kt")
+        public void testToPrimary() throws Exception {
+            runTest("idea/testData/resolve/references/constructorDelegatingReference/toPrimary.kt");
+        }
+
+        @TestMetadata("toSecondary.kt")
+        public void testToSecondary() throws Exception {
+            runTest("idea/testData/resolve/references/constructorDelegatingReference/toSecondary.kt");
+        }
+    }
+
     @TestMetadata("idea/testData/resolve/references/delegatedPropertyAccessors")
     @TestDataPath("$PROJECT_ROOT")
     @RunWith(JUnit3RunnerWithInners.class)
@@ -412,7 +474,7 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
         }
 
         public void testAllFilesPresentInDelegatedPropertyAccessors() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/delegatedPropertyAccessors"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/delegatedPropertyAccessors"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
         }
 
         @TestMetadata("unresolved.kt")
@@ -429,7 +491,7 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
             }
 
             public void testAllFilesPresentInInSource() throws Exception {
-                KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/delegatedPropertyAccessors/inSource"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/delegatedPropertyAccessors/inSource"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
             }
 
             @TestMetadata("getExtension.kt")
@@ -462,7 +524,7 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
             }
 
             public void testAllFilesPresentInInStandardLibrary() throws Exception {
-                KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/delegatedPropertyAccessors/inStandardLibrary"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/delegatedPropertyAccessors/inStandardLibrary"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
             }
 
             @TestMetadata("lazy.kt")
@@ -486,7 +548,7 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
         }
 
         public void testAllFilesPresentInForLoopIn() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/forLoopIn"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/forLoopIn"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
         }
 
         @TestMetadata("unresolvedIterator.kt")
@@ -503,7 +565,7 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
             }
 
             public void testAllFilesPresentInInBuiltIns() throws Exception {
-                KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/forLoopIn/inBuiltIns"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/forLoopIn/inBuiltIns"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
             }
 
             @TestMetadata("extension.kt")
@@ -526,7 +588,7 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
             }
 
             public void testAllFilesPresentInInLibrary() throws Exception {
-                KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/forLoopIn/inLibrary"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/forLoopIn/inLibrary"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
             }
 
             @TestMetadata("extension.kt")
@@ -549,7 +611,7 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
             }
 
             public void testAllFilesPresentInInSource() throws Exception {
-                KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/forLoopIn/inSource"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/forLoopIn/inSource"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
             }
 
             @TestMetadata("allMembers.kt")
@@ -573,7 +635,7 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
         }
 
         public void testAllFilesPresentInInvoke() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/invoke"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/invoke"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
         }
 
         @TestMetadata("lambdaAndParens.kt")
@@ -581,9 +643,19 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
             runTest("idea/testData/resolve/references/invoke/lambdaAndParens.kt");
         }
 
+        @TestMetadata("lambdaAndParensIncorrectVararg.kt")
+        public void testLambdaAndParensIncorrectVararg() throws Exception {
+            runTest("idea/testData/resolve/references/invoke/lambdaAndParensIncorrectVararg.kt");
+        }
+
         @TestMetadata("lambdaNoPar.kt")
         public void testLambdaNoPar() throws Exception {
             runTest("idea/testData/resolve/references/invoke/lambdaNoPar.kt");
+        }
+
+        @TestMetadata("lambdaNoParIncorrectVararg.kt")
+        public void testLambdaNoParIncorrectVararg() throws Exception {
+            runTest("idea/testData/resolve/references/invoke/lambdaNoParIncorrectVararg.kt");
         }
 
         @TestMetadata("lambdaNoParLabel.kt")
@@ -591,9 +663,19 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
             runTest("idea/testData/resolve/references/invoke/lambdaNoParLabel.kt");
         }
 
+        @TestMetadata("lambdaNoParLabelIncorrectVararg.kt")
+        public void testLambdaNoParLabelIncorrectVararg() throws Exception {
+            runTest("idea/testData/resolve/references/invoke/lambdaNoParLabelIncorrectVararg.kt");
+        }
+
         @TestMetadata("lambdaNoParRCurly.kt")
         public void testLambdaNoParRCurly() throws Exception {
             runTest("idea/testData/resolve/references/invoke/lambdaNoParRCurly.kt");
+        }
+
+        @TestMetadata("lambdaNoParRCurlyIncorrectVararg.kt")
+        public void testLambdaNoParRCurlyIncorrectVararg() throws Exception {
+            runTest("idea/testData/resolve/references/invoke/lambdaNoParRCurlyIncorrectVararg.kt");
         }
 
         @TestMetadata("noParams.kt")
@@ -611,6 +693,11 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
             runTest("idea/testData/resolve/references/invoke/nonemptyLambdaRPar.kt");
         }
 
+        @TestMetadata("nonemptyLambdaRParIncorrectVararg.kt")
+        public void testNonemptyLambdaRParIncorrectVararg() throws Exception {
+            runTest("idea/testData/resolve/references/invoke/nonemptyLambdaRParIncorrectVararg.kt");
+        }
+
         @TestMetadata("oneParam.kt")
         public void testOneParam() throws Exception {
             runTest("idea/testData/resolve/references/invoke/oneParam.kt");
@@ -619,6 +706,74 @@ public class FirReferenceResolveTestGenerated extends AbstractFirReferenceResolv
         @TestMetadata("oneParamRPar.kt")
         public void testOneParamRPar() throws Exception {
             runTest("idea/testData/resolve/references/invoke/oneParamRPar.kt");
+        }
+    }
+
+    @TestMetadata("idea/testData/resolve/references/nestedTypes")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class NestedTypes extends AbstractFirReferenceResolveTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+        }
+
+        public void testAllFilesPresentInNestedTypes() throws Exception {
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/resolve/references/nestedTypes"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+        }
+
+        @TestMetadata("ResolveCompanionInCompanionType.kt")
+        public void testResolveCompanionInCompanionType() throws Exception {
+            runTest("idea/testData/resolve/references/nestedTypes/ResolveCompanionInCompanionType.kt");
+        }
+
+        @TestMetadata("ResolveEndOfPackageInType.kt")
+        public void testResolveEndOfPackageInType() throws Exception {
+            runTest("idea/testData/resolve/references/nestedTypes/ResolveEndOfPackageInType.kt");
+        }
+
+        @TestMetadata("ResolveMiddleOfPackageInType.kt")
+        public void testResolveMiddleOfPackageInType() throws Exception {
+            runTest("idea/testData/resolve/references/nestedTypes/ResolveMiddleOfPackageInType.kt");
+        }
+
+        @TestMetadata("ResolveStartOfPackageInType.kt")
+        public void testResolveStartOfPackageInType() throws Exception {
+            runTest("idea/testData/resolve/references/nestedTypes/ResolveStartOfPackageInType.kt");
+        }
+
+        @TestMetadata("ResolveTypeInTheEndOfType.kt")
+        public void testResolveTypeInTheEndOfType() throws Exception {
+            runTest("idea/testData/resolve/references/nestedTypes/ResolveTypeInTheEndOfType.kt");
+        }
+
+        @TestMetadata("ResolveTypeInTheMiddleOfCompanionType.kt")
+        public void testResolveTypeInTheMiddleOfCompanionType() throws Exception {
+            runTest("idea/testData/resolve/references/nestedTypes/ResolveTypeInTheMiddleOfCompanionType.kt");
+        }
+
+        @TestMetadata("ResolveTypeInTheMiddleOfFunctionalType.kt")
+        public void testResolveTypeInTheMiddleOfFunctionalType() throws Exception {
+            runTest("idea/testData/resolve/references/nestedTypes/ResolveTypeInTheMiddleOfFunctionalType.kt");
+        }
+
+        @TestMetadata("ResolveTypeInTheMiddleOfNullableType.kt")
+        public void testResolveTypeInTheMiddleOfNullableType() throws Exception {
+            runTest("idea/testData/resolve/references/nestedTypes/ResolveTypeInTheMiddleOfNullableType.kt");
+        }
+
+        @TestMetadata("ResolveTypeInTheMiddleOfType.kt")
+        public void testResolveTypeInTheMiddleOfType() throws Exception {
+            runTest("idea/testData/resolve/references/nestedTypes/ResolveTypeInTheMiddleOfType.kt");
+        }
+
+        @TestMetadata("ResolveTypeInTheStartOfCompanionType.kt")
+        public void testResolveTypeInTheStartOfCompanionType() throws Exception {
+            runTest("idea/testData/resolve/references/nestedTypes/ResolveTypeInTheStartOfCompanionType.kt");
+        }
+
+        @TestMetadata("ResolveTypeInTheStartOfType.kt")
+        public void testResolveTypeInTheStartOfType() throws Exception {
+            runTest("idea/testData/resolve/references/nestedTypes/ResolveTypeInTheStartOfType.kt");
         }
     }
 }

@@ -63,6 +63,7 @@ class K2JVMCompilerArguments : CommonCompilerArguments() {
     )
     var scriptTemplates: Array<String>? by FreezableVar(null)
 
+    @GradleOption(DefaultValues.StringNullDefault::class)
     @Argument(value = "-module-name", valueDescription = "<name>", description = "Name of the generated .kotlin_module file")
     var moduleName: String? by NullableStringFreezableVar(null)
 
@@ -70,7 +71,7 @@ class K2JVMCompilerArguments : CommonCompilerArguments() {
     @Argument(
         value = "-jvm-target",
         valueDescription = "<version>",
-        description = "Target version of the generated JVM bytecode (1.6, 1.8, 9, 10, 11, 12, 13 or 14), default is 1.6"
+        description = "Target version of the generated JVM bytecode (1.6, 1.8, 9, 10, 11, 12, 13, 14 or 15), default is 1.6"
     )
     var jvmTarget: String? by NullableStringFreezableVar(JvmTarget.DEFAULT.description)
 
@@ -94,18 +95,26 @@ class K2JVMCompilerArguments : CommonCompilerArguments() {
     var irCheckLocalNames: Boolean by FreezableVar(false)
 
     @Argument(
-        value = "-Xallow-jvm-ir-dependencies",
-        description = "When not using the IR backend, do not report errors on those classes in dependencies, " +
-                "which were compiled by the IR backend"
+        value = "-Xallow-unstable-dependencies",
+        description = "Do not report errors on classes in dependencies, which were compiled by an unstable version of the Kotlin compiler"
     )
-    var allowJvmIrDependencies: Boolean by FreezableVar(false)
+    var allowUnstableDependencies: Boolean by FreezableVar(false)
 
     @Argument(
-        value = "-Xir-binary-with-stable-abi",
-        description = "When using the IR backend, produce binaries which can be read by non-IR backend.\n" +
-                "The author is responsible for verifying that the resulting binaries do indeed have the correct ABI"
+        value = "-Xabi-stability",
+        valueDescription = "{stable|unstable}",
+        description = "When using unstable compiler features such as FIR, use 'stable' to mark generated class files as stable\n" +
+                "to prevent diagnostics from stable compilers at the call site.\n" +
+                "When using the JVM IR backend, conversely, use 'unstable' to mark generated class files as unstable\n" +
+                "to force diagnostics to be reported."
     )
-    var isIrWithStableAbi: Boolean by FreezableVar(false)
+    var abiStability: String? by FreezableVar(null)
+
+    @Argument(
+        value = "-Xir-do-not-clear-binding-context",
+        description = "When using the IR backend, do not clear BindingContext between psi2ir and lowerings"
+    )
+    var doNotClearBindingContext: Boolean by FreezableVar(false)
 
     @Argument(value = "-Xmodule-path", valueDescription = "<path>", description = "Paths where to find Java 9+ modules")
     var javaModulePath: String? by NullableStringFreezableVar(null)
@@ -263,6 +272,14 @@ class K2JVMCompilerArguments : CommonCompilerArguments() {
     var supportCompatqualCheckerFrameworkAnnotations: String? by NullableStringFreezableVar(null)
 
     @Argument(
+        value = "-Xjspecify-annotations",
+        valueDescription = "ignore|strict|warn",
+        description = "Specify behavior for jspecify annotations.\n" +
+                "Default value is 'warn'"
+    )
+    var jspecifyAnnotations: String? by FreezableVar(null)
+
+    @Argument(
         value = "-Xno-exception-on-explicit-equals-for-boxed-null",
         description = "Do not throw NPE on explicit 'equals' call for null receiver of platform boxed primitive type"
     )
@@ -289,7 +306,6 @@ class K2JVMCompilerArguments : CommonCompilerArguments() {
                                  Note that if interface delegation is used, all interface methods are delegated.
                                  The only exception are methods annotated with the deprecated @JvmDefault annotation.
 -Xjvm-default=disable            Do not generate JVM default methods and prohibit @JvmDefault annotation usage.
- The following modes are DEPRECATED:
 -Xjvm-default=enable             Allow usages of @JvmDefault; only generate the default method
                                  for annotated method in the interface
                                  (annotating an existing method can break binary compatibility)
@@ -335,6 +351,16 @@ class K2JVMCompilerArguments : CommonCompilerArguments() {
     var emitJvmTypeAnnotations: Boolean by FreezableVar(false)
 
     @Argument(
+        value = "-Xstring-concat",
+        valueDescription = "{indy-with-constants|indy|inline}",
+        description = """Switch a way in which string concatenation is performed.
+-Xstring-concat=indy-with-constants   Performs string concatenation via `invokedynamic` 'makeConcatWithConstants'. Works only with `-jvm-target 9` or greater
+-Xstring-concat=indy                Performs string concatenation via `invokedynamic` 'makeConcat'. Works only with `-jvm-target 9` or greater
+-Xstring-concat=inline              Performs string concatenation via `StringBuilder`"""
+    )
+    var stringConcat: String? by NullableStringFreezableVar(JvmStringConcat.INLINE.description)
+
+    @Argument(
         value = "-Xklib",
         valueDescription = "<path>",
         description = "Paths to cross-platform libraries in .klib format"
@@ -353,22 +379,65 @@ class K2JVMCompilerArguments : CommonCompilerArguments() {
     )
     var noKotlinNothingValueException: Boolean by FreezableVar(false)
 
+    @Argument(
+        value = "-Xno-reset-jar-timestamps",
+        description = "Do not reset jar entry timestamps to a fixed date"
+    )
+    var noResetJarTimestamps: Boolean by FreezableVar(false)
+
+    @Argument(
+        value = "-Xno-unified-null-checks",
+        description = "Use pre-1.4 exception types in null checks instead of java.lang.NPE. See KT-22275 for more details"
+    )
+    var noUnifiedNullChecks: Boolean by FreezableVar(false)
+
+    @Argument(
+        value = "-Xprofile",
+        valueDescription = "<profilerPath:command:outputDir>",
+        description = "Debug option: Run compiler with async profiler, save snapshots to outputDir, command is passed to async-profiler on start\n" +
+                "You'll have to provide async-profiler.jar on classpath to use this\n" +
+                "profilerPath is a path to libasyncProfiler.so\n" +
+                "Example: -Xprofile=<PATH_TO_ASYNC_PROFILER>/async-profiler/build/libasyncProfiler.so:event=cpu,interval=1ms,threads,start,framebuf=50000000:<SNAPSHOT_DIR_PATH>"
+    )
+    var profileCompilerCommand: String? by NullableStringFreezableVar(null)
+
+    @Argument(
+        value = "-Xrepeat",
+        valueDescription = "<number>",
+        description = "Debug option: Repeats modules compilation <number> times"
+    )
+    var repeatCompileModules: String? by NullableStringFreezableVar(null)
+
+    @Argument(
+        value = "-Xuse-old-spilled-var-type-analysis",
+        description = "Use old, SourceInterpreter-based analysis for fields, used for spilled variables in coroutines"
+    )
+    var useOldSpilledVarTypeAnalysis: Boolean by FreezableVar(false)
+
+    @Argument(
+        value = "-Xuse-14-inline-classes-mangling-scheme",
+        description = "Use 1.4 inline classes mangling scheme instead of 1.4.30 one"
+    )
+    var useOldInlineClassesManglingScheme: Boolean by FreezableVar(false)
+
+    @Argument(
+        value = "-Xjvm-enable-preview",
+        description = "Allow using features from Java language that are in preview phase.\n" +
+                "Works as `--enable-preview` in Java. All class files are marked as preview-generated thus it won't be possible to use them in release environment"
+    )
+    var enableJvmPreview: Boolean by FreezableVar(false)
+
     override fun configureAnalysisFlags(collector: MessageCollector): MutableMap<AnalysisFlag<*>, Any> {
         val result = super.configureAnalysisFlags(collector)
         result[JvmAnalysisFlags.strictMetadataVersionSemantics] = strictMetadataVersionSemantics
-        result[JvmAnalysisFlags.jsr305] = Jsr305Parser(collector).parse(
+        result[JvmAnalysisFlags.javaTypeEnhancementState] = JavaTypeEnhancementStateParser(collector).parse(
             jsr305,
-            supportCompatqualCheckerFrameworkAnnotations
+            supportCompatqualCheckerFrameworkAnnotations,
+            jspecifyAnnotations
         )
         result[AnalysisFlags.ignoreDataFlowInAssert] = JVMAssertionsMode.fromString(assertionsMode) != JVMAssertionsMode.LEGACY
         JvmDefaultMode.fromStringOrNull(jvmDefault)?.let {
             result[JvmAnalysisFlags.jvmDefaultMode] = it
-            if (it == JvmDefaultMode.ENABLE || it == JvmDefaultMode.ENABLE_WITH_DEFAULT_IMPLS) {
-                collector.report(
-                    CompilerMessageSeverity.WARNING,
-                    "'-Xjvm-default=$jvmDefault' mode is deprecated. Please considering to switch to new modes: 'all' and 'all-compatibility'"
-                )
-            }
         } ?: collector.report(
             CompilerMessageSeverity.ERROR,
             "Unknown @JvmDefault mode: $jvmDefault, " +
@@ -378,7 +447,9 @@ class K2JVMCompilerArguments : CommonCompilerArguments() {
         result[JvmAnalysisFlags.sanitizeParentheses] = sanitizeParentheses
         result[JvmAnalysisFlags.suppressMissingBuiltinsError] = suppressMissingBuiltinsError
         result[JvmAnalysisFlags.irCheckLocalNames] = irCheckLocalNames
-        result[AnalysisFlags.reportErrorsOnIrDependencies] = !useIR && !useFir && !allowJvmIrDependencies
+        result[JvmAnalysisFlags.enableJvmPreview] = enableJvmPreview
+        result[AnalysisFlags.allowUnstableDependencies] = allowUnstableDependencies || useFir
+        result[JvmAnalysisFlags.disableUltraLightClasses] = disableUltraLightClasses
         return result
     }
 

@@ -3,6 +3,7 @@ package org.jetbrains.kotlin.gradle
 import org.gradle.api.logging.LogLevel
 import org.jetbrains.kotlin.gradle.util.*
 import org.jetbrains.kotlin.test.KotlinTestUtils
+import org.jetbrains.kotlin.test.util.KtTestUtil
 import org.junit.Assume
 import org.junit.Test
 import java.io.File
@@ -12,9 +13,6 @@ import kotlin.test.assertTrue
 open class KotlinAndroid33GradleIT : KotlinAndroid32GradleIT() {
     override val androidGradlePluginVersion: AGPVersion
         get() = AGPVersion.v3_3_2
-
-    override val defaultGradleVersion: GradleVersionRequired
-        get() = GradleVersionRequired.AtLeast("5.0")
 }
 
 open class KotlinAndroid36GradleIT : KotlinAndroid33GradleIT() {
@@ -23,6 +21,58 @@ open class KotlinAndroid36GradleIT : KotlinAndroid33GradleIT() {
 
     override val defaultGradleVersion: GradleVersionRequired
         get() = GradleVersionRequired.AtLeast("6.0")
+
+    @Test
+    fun testAndroidMppSourceSets(): Unit = with(Project("new-mpp-android-source-sets", GradleVersionRequired.FOR_MPP_SUPPORT)) {
+        build("sourceSets") {
+            assertSuccessful()
+
+            assertContains("Android resources: [lib/src/main/res, lib/src/androidMain/res]")
+            assertContains("Assets: [lib/src/main/assets, lib/src/androidMain/assets]")
+            assertContains("AIDL sources: [lib/src/main/aidl, lib/src/androidMain/aidl]")
+            assertContains("RenderScript sources: [lib/src/main/rs, lib/src/androidMain/rs]")
+            assertContains("JNI sources: [lib/src/main/jni, lib/src/androidMain/jni]")
+            assertContains("JNI libraries: [lib/src/main/jniLibs, lib/src/androidMain/jniLibs]")
+            assertContains("Java-style resources: [lib/src/main/resources, lib/src/androidMain/resources]")
+
+            assertContains("Android resources: [lib/src/androidTestDebug/res, lib/src/androidAndroidTestDebug/res]")
+            assertContains("Assets: [lib/src/androidTestDebug/assets, lib/src/androidAndroidTestDebug/assets]")
+            assertContains("AIDL sources: [lib/src/androidTestDebug/aidl, lib/src/androidAndroidTestDebug/aidl]")
+            assertContains("RenderScript sources: [lib/src/androidTestDebug/rs, lib/src/androidAndroidTestDebug/rs]")
+            assertContains("JNI sources: [lib/src/androidTestDebug/jni, lib/src/androidAndroidTestDebug/jni]")
+            assertContains("JNI libraries: [lib/src/androidTestDebug/jniLibs, lib/src/androidAndroidTestDebug/jniLibs]")
+            assertContains("Java-style resources: [lib/src/androidTestDebug/resources, lib/src/androidAndroidTestDebug/resources]")
+
+            assertContains("Java-style resources: [lib/betaSrc/paidBeta/resources, lib/src/androidPaidBeta/resources]")
+            assertContains("Java-style resources: [lib/betaSrc/paidBetaDebug/resources, lib/src/androidPaidBetaDebug/resources]")
+            assertContains("Java-style resources: [lib/betaSrc/paidBetaRelease/resources, lib/src/androidPaidBetaRelease/resources]")
+
+            assertContains("Java-style resources: [lib/betaSrc/freeBeta/resources, lib/src/androidFreeBeta/resources]")
+            assertContains("Java-style resources: [lib/betaSrc/freeBetaDebug/resources, lib/src/androidFreeBetaDebug/resources]")
+            assertContains("Java-style resources: [lib/betaSrc/freeBetaRelease/resources, lib/src/androidFreeBetaRelease/resources]")
+        }
+
+        build("testFreeBetaDebug") {
+            assertFailed()
+            assertContains("CommonTest > fail FAILED")
+            assertContains("TestKotlin > fail FAILED")
+            assertContains("AndroidTestKotlin > fail FAILED")
+            assertContains("TestJava > fail FAILED")
+        }
+
+        build("assemble") {
+            assertSuccessful()
+        }
+
+        // Test for KT-35016: MPP should recognize android instrumented tests correctly
+        // TODO: https://issuetracker.google.com/issues/173770818 enable after fix in AGP
+        /*
+        build("connectedAndroidTest") {
+            assertFailed()
+            assertContains("No connected devices!")
+        }
+         */
+    }
 
     @Test
     fun testAndroidWithNewMppApp() = with(Project("new-mpp-android", GradleVersionRequired.FOR_MPP_SUPPORT)) {
@@ -340,11 +390,28 @@ open class KotlinAndroid36GradleIT : KotlinAndroid33GradleIT() {
             assertTasksExecuted(lintTask) // Check that the lint task ran successfully, KT-27170
         }
     }
+
+    @Test
+    fun testJvmWithJava() = with(Project("mppJvmWithJava")) {
+        setupWorkingDir()
+
+        build("build") {
+            assertSuccessful()
+        }
+
+        build("assemble") {
+            assertSuccessful()
+        }
+    }
 }
 
 open class KotlinAndroid32GradleIT : KotlinAndroid3GradleIT() {
     override val androidGradlePluginVersion: AGPVersion
         get() = AGPVersion.v3_2_0
+
+    //android build tool 28.0.3 use org.gradle.api.file.ProjectLayout#fileProperty(org.gradle.api.provider.Provider) that was deleted in gradle 6.0
+    override val defaultGradleVersion: GradleVersionRequired
+        get() = GradleVersionRequired.Until("5.6.4")
 
     @Test
     fun testKaptUsingApOptionProvidersAsNestedInputOutput() = with(Project("AndroidProject")) {
@@ -408,14 +475,6 @@ open class KotlinAndroid32GradleIT : KotlinAndroid3GradleIT() {
             assertTasksUpToDate(javacTasks + kaptTasks)
         }
     }
-}
-
-class KotlinAndroid30GradleIT : KotlinAndroid3GradleIT() {
-    override val androidGradlePluginVersion: AGPVersion
-        get() = AGPVersion.v3_0_0
-
-    override val defaultGradleVersion: GradleVersionRequired
-        get() = GradleVersionRequired.Until("4.10.2")
 
     @Test
     fun testOmittedStdlibVersion() = Project("AndroidProject").run {
@@ -490,7 +549,7 @@ abstract class AbstractKotlinAndroidGradleTests : BaseGradleIT() {
 
     override fun defaultBuildOptions() =
         super.defaultBuildOptions().copy(
-            androidHome = KotlinTestUtils.findAndroidSdk(),
+            androidHome = KtTestUtil.findAndroidSdk(),
             androidGradlePluginVersion = androidGradlePluginVersion
         )
 
@@ -594,7 +653,12 @@ fun getSomething() = 10
         }
 
         val libAndroidClassesOnlyUtilKt = project.projectDir.getFileByName("LibAndroidClassesOnlyUtil.kt")
-        libAndroidClassesOnlyUtilKt.modify { it.replace("fun libAndroidClassesOnlyUtil(): String", "fun libAndroidClassesOnlyUtil(): CharSequence") }
+        libAndroidClassesOnlyUtilKt.modify {
+            it.replace(
+                "fun libAndroidClassesOnlyUtil(): String",
+                "fun libAndroidClassesOnlyUtil(): CharSequence"
+            )
+        }
         project.build("assembleDebug", options = options) {
             assertSuccessful()
             val affectedSources = project.projectDir.getFilesByNames("LibAndroidClassesOnlyUtil.kt", "useLibAndroidClassesOnlyUtil.kt")
@@ -675,6 +739,17 @@ fun getSomething() = 10
 
         project.build("assembleDebug", options = options) {
             assertSuccessful()
+            assertContains("The 'kotlin-android-extensions' Gradle plugin is deprecated")
+        }
+    }
+
+    @Test
+    fun testParcelize() {
+        val project = Project("AndroidParcelizeProject")
+        val options = defaultBuildOptions().copy(incremental = false)
+
+        project.build("assembleDebug", options = options) {
+            assertSuccessful()
         }
     }
 
@@ -724,29 +799,6 @@ fun getSomething() = 10
         val project = Project("AndroidExtensionsSpecificFeatures")
         val options = defaultBuildOptions().copy(incremental = false)
 
-        if (this is KotlinAndroid30GradleIT) {
-            project.setupWorkingDir()
-            project.gradleBuildScript("app").modify {
-                """
-                def projectEvaluated = false
-
-                configurations.all { configuration ->
-                    incoming.beforeResolve {
-                        if (!projectEvaluated) {
-                            throw new RuntimeException("${'$'}configuration resolved during project configuration phase.")
-                        }
-                    }
-                }
-
-                $it
-
-                afterEvaluate {
-                    projectEvaluated = true
-                }
-                """.trimIndent()
-            }
-        }
-
         project.build("assemble", options = options) {
             assertFailed()
             assertContains("Unresolved reference: textView")
@@ -756,7 +808,7 @@ fun getSomething() = 10
 
         project.build("assemble", options = options) {
             assertFailed()
-            assertContains("Class 'User' is not abstract and does not implement abstract member public abstract fun writeToParcel")
+            assertContainsRegex("Class 'User' is not abstract and does not implement abstract member public abstract fun (writeToParcel|describeContents)".toRegex())
         }
 
         File(project.projectDir, "app/build.gradle").modify { it.replace("[\"views\"]", "[\"parcelize\", \"views\"]") }

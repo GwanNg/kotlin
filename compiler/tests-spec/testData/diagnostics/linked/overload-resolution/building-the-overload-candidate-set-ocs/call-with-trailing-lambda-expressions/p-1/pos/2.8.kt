@@ -1,4 +1,3 @@
-// FIR_IDENTICAL
 // !LANGUAGE: +NewInference
 // !DIAGNOSTICS: -UNUSED_VARIABLE -ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE -UNUSED_VALUE -UNUSED_PARAMETER -UNUSED_EXPRESSION -NOTHING_TO_INLINE
 // SKIP_TXT
@@ -7,8 +6,8 @@
  * KOTLIN DIAGNOSTICS SPEC TEST (POSITIVE)
  *
  * SPEC VERSION: 0.1-300
- * PLACE: overload-resolution, building-the-overload-candidate-set-ocs, call-with-trailing-lambda-expressions -> paragraph 1 -> sentence 2
- * RELEVANT PLACES: overload-resolution, building-the-overload-candidate-set-ocs, call-with-named-parameters -> paragraph 2 -> sentence 1
+ * MAIN LINK: overload-resolution, building-the-overload-candidate-set-ocs, call-with-trailing-lambda-expressions -> paragraph 1 -> sentence 2
+ * PRIMARY LINKS: overload-resolution, building-the-overload-candidate-set-ocs, call-with-named-parameters -> paragraph 2 -> sentence 1
  * overload-resolution, building-the-overload-candidate-set-ocs, call-with-specified-type-parameters -> paragraph 1 -> sentence 2
  * NUMBER: 8
  * DESCRIPTION: call-with-trailing-lambda-expressions,Explicit receiver:  Top-level non-extension functions: Callables explicitly imported into the current file
@@ -22,7 +21,7 @@ import libPackageCase1.*
 import libPackageCase1Explicit.listOf
 
 fun case1() {
-    <!DEBUG_INFO_CALL("fqName: libPackageCase1Explicit.listOf; typeCall: function")!>listOf(elements1 = arrayOf(1), body = { "" })<!>
+    <!DEBUG_INFO_CALL("fqName: libPackageCase1Explicit.listOf; typeCall: function")!>listOf(<!CHANGING_ARGUMENTS_EXECUTION_ORDER_FOR_NAMED_VARARGS!>elements1 = arrayOf(1)<!>, body = { "" })<!>
 }
 
 // FILE: Lib.kt
@@ -48,7 +47,7 @@ import libPackageCase2.*
 import libPackageCase2Explicit.listOf
 
 fun case2() {
-    <!DEBUG_INFO_CALL("fqName: libPackageCase2Explicit.listOf; typeCall: function")!>listOf(elements1 = arrayOf(1), body = { "" })<!>
+    <!DEBUG_INFO_CALL("fqName: libPackageCase2Explicit.listOf; typeCall: function")!>listOf(<!CHANGING_ARGUMENTS_EXECUTION_ORDER_FOR_NAMED_VARARGS!>elements1 = arrayOf(1)<!>, body = { "" })<!>
 }
 
 class A {
@@ -81,7 +80,7 @@ import libPackageCase3.*
 import libPackageCase3Explicit.listOf
 
 fun case3() {
-    <!DEBUG_INFO_CALL("fqName: testsCase3.A.invoke; typeCall: variable&invoke")!>listOf(elements1 = arrayOf(1), body = { "" })<!>
+    <!DEBUG_INFO_CALL("fqName: testsCase3.A.invoke; typeCall: variable&invoke")!>listOf(<!CHANGING_ARGUMENTS_EXECUTION_ORDER_FOR_NAMED_VARARGS!>elements1 = arrayOf(1)<!>, body = { "" })<!>
 }
 
 class A {

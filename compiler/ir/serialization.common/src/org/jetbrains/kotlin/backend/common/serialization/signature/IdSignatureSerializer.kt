@@ -8,12 +8,13 @@ package org.jetbrains.kotlin.backend.common.serialization.signature
 import org.jetbrains.kotlin.backend.common.serialization.DeclarationTable
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.*
+import org.jetbrains.kotlin.ir.overrides.isOverridableFunction
+import org.jetbrains.kotlin.ir.overrides.isOverridableProperty
 import org.jetbrains.kotlin.ir.util.IdSignature
 import org.jetbrains.kotlin.ir.util.KotlinMangler
 import org.jetbrains.kotlin.ir.util.render
 import org.jetbrains.kotlin.ir.visitors.IrElementVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptVoid
-import org.jetbrains.kotlin.name.FqName
 
 open class IdSignatureSerializer(val mangler: KotlinMangler.IrMangler) : IdSignatureComputer {
 
@@ -23,7 +24,7 @@ open class IdSignatureSerializer(val mangler: KotlinMangler.IrMangler) : IdSigna
         } else null
     }
 
-    private fun composeSignatureForDeclaration(declaration: IrDeclaration): IdSignature {
+    fun composeSignatureForDeclaration(declaration: IrDeclaration): IdSignature {
         return if (mangler.run { declaration.isExported() }) {
             composePublicIdSignature(declaration)
         } else composeFileLocalIdSignature(declaration)
@@ -31,6 +32,8 @@ open class IdSignatureSerializer(val mangler: KotlinMangler.IrMangler) : IdSigna
 
     private var localIndex: Long = 0
     private var scopeIndex: Int = 0
+
+    // TODO: we need to disentangle signature construction with declaration tables.
     lateinit var table: DeclarationTable
 
     fun reset() {
@@ -96,11 +99,12 @@ open class IdSignatureSerializer(val mangler: KotlinMangler.IrMangler) : IdSigna
 
     private val publicSignatureBuilder = PublicIdSigBuilder()
 
-    private fun composeContainerIdSignature(container: IrDeclarationParent): IdSignature {
-        if (container is IrPackageFragment) return IdSignature.PublicSignature(container.fqName, FqName.ROOT, null, 0)
-        if (container is IrDeclaration) return table.signatureByDeclaration(container)
-        error("Unexpected container ${container.render()}")
-    }
+    private fun composeContainerIdSignature(container: IrDeclarationParent): IdSignature =
+        when (container) {
+            is IrPackageFragment -> IdSignature.PublicSignature(container.fqName.asString(), "", null, 0)
+            is IrDeclaration -> table.signatureByDeclaration(container)
+            else -> error("Unexpected container ${container.render()}")
+        }
 
     fun composePublicIdSignature(declaration: IrDeclaration): IdSignature {
         assert(mangler.run { declaration.isExported() }) {
@@ -122,9 +126,28 @@ open class IdSignatureSerializer(val mangler: KotlinMangler.IrMangler) : IdSigna
                     IdSignature.FileLocalSignature(p, ++localIndex)
                 }
                 is IrSimpleFunction -> {
+                    val parent = declaration.parent
                     val p = declaration.correspondingPropertySymbol?.let { composeSignatureForDeclaration(it.owner) }
-                        ?: composeContainerIdSignature(declaration.parent)
-                    IdSignature.FileLocalSignature(p, ++localIndex)
+                        ?: composeContainerIdSignature(parent)
+                    IdSignature.FileLocalSignature(
+                        p,
+                        if (declaration.isOverridableFunction()) {
+                            mangler.run { declaration.signatureMangle }
+                        } else {
+                            ++localIndex
+                        }
+                    )
+                }
+                is IrProperty -> {
+                    val parent = declaration.parent
+                    IdSignature.FileLocalSignature(
+                        composeContainerIdSignature(parent),
+                        if (declaration.isOverridableProperty()) {
+                            mangler.run { declaration.signatureMangle }
+                        } else {
+                            ++localIndex
+                        }
+                    )
                 }
                 else -> IdSignature.FileLocalSignature(composeContainerIdSignature(declaration.parent), ++localIndex)
             }

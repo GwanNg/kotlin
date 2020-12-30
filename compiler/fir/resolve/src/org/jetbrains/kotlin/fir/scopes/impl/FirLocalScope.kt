@@ -7,23 +7,23 @@ package org.jetbrains.kotlin.fir.scopes.impl
 
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
-import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.NAME_FOR_BACKING_FIELD
+import org.jetbrains.kotlin.fir.declarations.FirProperty
+import org.jetbrains.kotlin.fir.declarations.FirRegularClass
+import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
+import org.jetbrains.kotlin.fir.declarations.FirVariable
 import org.jetbrains.kotlin.fir.resolve.PersistentMultimap
 import org.jetbrains.kotlin.fir.resolve.substitution.ConeSubstitutor
+import org.jetbrains.kotlin.fir.scopes.FirContainingNamesAwareScope
 import org.jetbrains.kotlin.fir.scopes.FirScope
 import org.jetbrains.kotlin.fir.symbols.impl.*
 import org.jetbrains.kotlin.name.Name
 
-class FirLocalScope(
-    properties: PersistentMap<Name, FirVariableSymbol<*>>,
-    functions: PersistentMultimap<Name, FirFunctionSymbol<*>>,
-    classes: PersistentMap<Name, FirRegularClassSymbol>
-) : FirScope() {
-    val properties: PersistentMap<Name, FirVariableSymbol<*>> = properties
-    val functions: PersistentMultimap<Name, FirFunctionSymbol<*>> = functions
-    val classes: PersistentMap<Name, FirRegularClassSymbol> = classes
-
+class FirLocalScope private constructor(
+    val properties: PersistentMap<Name, FirVariableSymbol<*>>,
+    val functions: PersistentMultimap<Name, FirNamedFunctionSymbol>,
+    val classes: PersistentMap<Name, FirRegularClassSymbol>
+) : FirScope(), FirContainingNamesAwareScope {
     constructor() : this(persistentMapOf(), PersistentMultimap(), persistentMapOf())
 
     fun storeClass(klass: FirRegularClass): FirLocalScope {
@@ -34,7 +34,7 @@ class FirLocalScope(
 
     fun storeFunction(function: FirSimpleFunction): FirLocalScope {
         return FirLocalScope(
-            properties, functions.put(function.name, function.symbol as FirNamedFunctionSymbol), classes
+            properties, functions.put(function.name, function.symbol), classes
         )
     }
 
@@ -50,7 +50,7 @@ class FirLocalScope(
         )
     }
 
-    override fun processFunctionsByName(name: Name, processor: (FirFunctionSymbol<*>) -> Unit) {
+    override fun processFunctionsByName(name: Name, processor: (FirNamedFunctionSymbol) -> Unit) {
         for (function in functions[name]) {
             processor(function)
         }
@@ -69,4 +69,9 @@ class FirLocalScope(
             processor(klass, ConeSubstitutor.Empty)
         }
     }
+
+    override fun mayContainName(name: Name) = properties.containsKey(name) || functions[name].isNotEmpty() || classes.containsKey(name)
+
+    override fun getCallableNames(): Set<Name> = properties.keys + functions.keys
+    override fun getClassifierNames(): Set<Name> = classes.keys
 }

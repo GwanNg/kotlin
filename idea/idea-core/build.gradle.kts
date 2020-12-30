@@ -16,6 +16,7 @@ dependencies {
     compile(project(":compiler:util"))
     compile(project(":idea:ide-common"))
     compile(project(":idea:idea-jps-common"))
+    compile(project(":idea:idea-frontend-independent"))
     compile(project(":kotlin-util-klib-metadata"))
     compile(project(":plugins:android-extensions-compiler"))
     compile(project(":kotlin-scripting-compiler-impl"))
@@ -30,10 +31,8 @@ dependencies {
 
     compileOnly(intellijDep())
 
-    Platform[192].orHigher {
-        compileOnly(intellijPluginDep("java"))
-    }
-    
+    compileOnly(intellijPluginDep("java"))
+
     compileOnly(intellijPluginDep("gradle"))
 }
 

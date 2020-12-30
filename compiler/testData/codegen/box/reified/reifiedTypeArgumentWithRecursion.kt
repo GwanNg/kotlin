@@ -1,3 +1,5 @@
+// DONT_TARGET_EXACT_BACKEND: WASM
+// WASM_MUTE_REASON: CLASS_REFERENCES
 // WITH_RUNTIME
 // KJS_WITH_FULL_RUNTIME
 
@@ -14,15 +16,17 @@ inline fun <reified T> T.causeBug() {
     x is T
     x as T
     T::class
-    typeOf<T>()
     Array<T>(1) { x }
+
+    // Non-reified type parameters with recursive bounds are not yet supported, see Z from class Something
+    // typeOf<T>()
 }
 
 interface SomeToImplement<SELF_TVAR>
 
 class Y : SomeToImplement<Y>
 
-class Something<T> where T: SomeToImplement<T> {
+class Something<Z> where Z : SomeToImplement<Z> {
     fun op() = causeBug()
 }
 

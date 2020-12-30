@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.idea.debugger.test;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.util.KtTestUtil;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.runner.RunWith;
 
@@ -25,12 +26,17 @@ public class ContinuationStackTraceTestGenerated extends AbstractContinuationSta
     }
 
     public void testAllFilesPresentInContinuation() throws Exception {
-        KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/jvm-debugger/jvm-debugger-test/testData/continuation"), Pattern.compile("^(.+)\\.kt$"), null, true);
+        KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/jvm-debugger/jvm-debugger-test/testData/continuation"), Pattern.compile("^(.+)\\.kt$"), null, true);
     }
 
     @TestMetadata("suspendFun.kt")
     public void testSuspendFun() throws Exception {
         runTest("idea/jvm-debugger/jvm-debugger-test/testData/continuation/suspendFun.kt");
+    }
+
+    @TestMetadata("suspendFunWithInner.kt")
+    public void testSuspendFunWithInner() throws Exception {
+        runTest("idea/jvm-debugger/jvm-debugger-test/testData/continuation/suspendFunWithInner.kt");
     }
 
     @TestMetadata("suspendLambda.kt")

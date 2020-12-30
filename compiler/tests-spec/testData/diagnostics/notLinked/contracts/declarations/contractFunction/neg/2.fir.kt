@@ -1,16 +1,6 @@
 // !LANGUAGE: +AllowContractsForNonOverridableMembers +AllowReifiedGenericsInContracts
 // !USE_EXPERIMENTAL: kotlin.contracts.ExperimentalContracts
 
-/*
- * KOTLIN DIAGNOSTICS NOT LINKED SPEC TEST (NEGATIVE)
- *
- * SECTIONS: contracts, declarations, contractFunction
- * NUMBER: 2
- * DESCRIPTION: Check report about use contracts in literal functions, lambdas or not top-level functions.
- * ISSUES: KT-26149
- * HELPERS: classes
- */
-
 import kotlin.contracts.*
 
 // TESTCASE NUMBER: 1
@@ -42,7 +32,7 @@ fun case_2() {
 class case_4 : ClassLevel3() {
 
     fun <T : Number?>T.case_4_1(): Boolean {
-        contract { returns(false) implies (this@case_4 !is ClassLevel1) }
+        contract { returns(false) implies (<!UNRESOLVED_LABEL!>this@case_4<!> !is ClassLevel1) }
         return this == null
     }
 
@@ -70,12 +60,12 @@ class case_4 : ClassLevel3() {
 class case_5<T> : ClassLevel5() {
     inner class case_5_1 {
         fun <K : Number?>K.case_5_1_1() {
-            contract { returns() implies (this@case_5_1 !is ClassLevel1 && this@case_5_1 != null || this@case_5 is ClassLevel1 && this@case_5_1_1 is Float) }
+            contract { returns() implies (<!UNRESOLVED_LABEL!>this@case_5_1<!> !is ClassLevel1 && <!UNRESOLVED_LABEL!>this@case_5_1<!> != null || <!UNRESOLVED_LABEL!>this@case_5<!> is ClassLevel1 && this@case_5_1_1 is Float) }
             if (!(this@case_5_1 !is ClassLevel1 && this@case_5_1 != null || this@case_5 is ClassLevel1 && this is Float)) throw Exception()
         }
 
         fun case_5_1_2() {
-            contract { returns() implies (this@case_5_1 !is ClassLevel1 || this@case_5 is ClassLevel1 || this@case_5_1 == null) }
+            contract { returns() implies (<!UNRESOLVED_LABEL!>this@case_5_1<!> !is ClassLevel1 || <!UNRESOLVED_LABEL!>this@case_5<!> is ClassLevel1 || <!UNRESOLVED_LABEL!>this@case_5_1<!> == null) }
             if (!(this@case_5_1 !is ClassLevel1 || this@case_5 is ClassLevel1 || this@case_5_1 == null)) throw Exception()
         }
     }

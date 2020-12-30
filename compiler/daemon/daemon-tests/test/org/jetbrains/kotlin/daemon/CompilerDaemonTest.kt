@@ -27,7 +27,7 @@ import org.jetbrains.kotlin.daemon.client.*
 import org.jetbrains.kotlin.daemon.common.*
 import org.jetbrains.kotlin.integration.KotlinIntegrationTestBase
 import org.jetbrains.kotlin.progress.CompilationCanceledStatus
-import org.jetbrains.kotlin.test.KotlinTestUtils
+import org.jetbrains.kotlin.test.util.KtTestUtil
 import org.jetbrains.kotlin.utils.KotlinPaths
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -36,10 +36,13 @@ import java.lang.management.ManagementFactory
 import java.net.URL
 import java.net.URLClassLoader
 import java.nio.charset.Charset
+import java.nio.file.Path
 import java.rmi.server.UnicastRemoteObject
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.invariantSeparatorsPath
 import kotlin.script.dependencies.Environment
 import kotlin.script.dependencies.ScriptContents
 import kotlin.script.experimental.dependencies.DependenciesResolver
@@ -92,8 +95,8 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
             assertEquals("build results differ", AbstractCliTest.removePerfOutput(res1.out), AbstractCliTest.removePerfOutput(res2.out))
     }
 
-    private fun getTestBaseDir(): String = KotlinTestUtils.getTestDataPathBase() + "/integration/smoke/" + getTestName(true)
-    private fun getHelloAppBaseDir(): String = KotlinTestUtils.getTestDataPathBase() + "/integration/smoke/helloApp"
+    private fun getTestBaseDir(): String = KtTestUtil.getTestDataPathBase() + "/integration/smoke/" + getTestName(true)
+    private fun getHelloAppBaseDir(): String = KtTestUtil.getTestDataPathBase() + "/integration/smoke/helloApp"
 
     private fun run(logName: String, vararg args: String): Int = runJava(getTestBaseDir(), logName, *args)
 
@@ -170,7 +173,7 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
             val opts2 = configureDaemonJVMOptions(inheritMemoryLimits = false, inheritAdditionalProperties = false, inheritOtherJvmOptions = false)
             assertEquals("300m", opts2.maxMemory)
             assertEquals( -1, DaemonJVMOptionsMemoryComparator().compare(opts, opts2))
-            assertEquals("300m", listOf(opts, opts2).maxWith(DaemonJVMOptionsMemoryComparator())?.maxMemory)
+            assertEquals("300m", listOf(opts, opts2).maxWithOrNull(DaemonJVMOptionsMemoryComparator())?.maxMemory)
 
             val myXmxParam = ManagementFactory.getRuntimeMXBean().inputArguments.first { it.startsWith("-Xmx") }
             TestCase.assertNotNull(myXmxParam)
@@ -685,13 +688,13 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
                         else -> "?"
                     }
                     val compiledPort: Int? = daemonInfo.trim().split(" ").last().toIntOrNull()
-                    appendln("#$i\tcompiled on $daemonInfo, session ${daemonInfos[i]?.second}, result ${resultCodes[i]}; started daemon on port ${port2logs[i]?.first}, log: ${logFiles[i]?.canonicalPath}")
+                    appendLine("#$i\tcompiled on $daemonInfo, session ${daemonInfos[i]?.second}, result ${resultCodes[i]}; started daemon on port ${port2logs[i]?.first}, log: ${logFiles[i]?.canonicalPath}")
                     if (resultCodes[i] != 0 || electionLogs[i] == null) {
-                        appendln("--- out $i, result ${resultCodes[i]}:\n${outStreams[i].toByteArray().toString(Charset.defaultCharset())}\n---")
+                        appendLine("--- out $i, result ${resultCodes[i]}:\n${outStreams[i].toByteArray().toString(Charset.defaultCharset())}\n---")
                         compiledPort?.let { port -> port2logs.find { it?.first == port } }?.second?.let { logFile ->
-                            appendln("--- log file ${logFile.name}:\n${logFile.readText()}\n---")
+                            appendLine("--- log file ${logFile.name}:\n${logFile.readText()}\n---")
                         }
-                        ?: appendln("--- log not found (port: $compiledPort)")
+                        ?: appendLine("--- log not found (port: $compiledPort)")
                     }
                 }
             }
@@ -917,20 +920,20 @@ internal fun generateLargeKotlinFile(size: Int): String {
     return buildString {
         append("package large\n\n")
         (0..size).forEach {
-            appendln("class Class$it")
-            appendln("{")
-            appendln("\tfun foo(): Long = $it")
-            appendln("}")
-            appendln("\n")
+            appendLine("class Class$it")
+            appendLine("{")
+            appendLine("\tfun foo(): Long = $it")
+            appendLine("}")
+            appendLine("\n")
             repeat(2000) {
-                appendln("// kotlin rules ... and stuff")
+                appendLine("// kotlin rules ... and stuff")
             }
         }
-        appendln("fun main(args: Array<String>)")
-        appendln("{")
-        appendln("\tval result = Class5().foo() + Class$size().foo()")
-        appendln("\tprintln(result)")
-        appendln("}")
+        appendLine("fun main(args: Array<String>)")
+        appendLine("{")
+        appendLine("\tval result = Class5().foo() + Class$size().foo()")
+        appendLine("\tprintln(result)")
+        appendLine("}")
     }
 
 }
@@ -997,9 +1000,12 @@ internal inline fun withLogFile(prefix: String, suffix: String = ".log", printLo
 // if file path is given in windows form (using backslash as a separator); the reason is unknown
 // this function makes a path with forward slashed, that works on windows too
 internal val File.loggerCompatiblePath: String
-    get() =
-        if (OSKind.current == OSKind.Windows) absolutePath.replace('\\', '/')
-        else absolutePath
+    get() = invariantSeparatorsPath
+
+@OptIn(ExperimentalPathApi::class)
+internal val Path.loggerCompatiblePath: String
+    get() = invariantSeparatorsPath
+
 
 open class TestKotlinScriptDummyDependenciesResolver : DependenciesResolver {
 

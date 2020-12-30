@@ -19,8 +19,8 @@ import org.jetbrains.kotlin.fir.psi
 import org.jetbrains.kotlin.fir.references.FirErrorNamedReference
 import org.jetbrains.kotlin.fir.render
 import org.jetbrains.kotlin.fir.visitors.FirVisitorVoid
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
-import org.jetbrains.kotlin.psi.psiUtil.getStartOffsetIn
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.parents
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners
@@ -52,13 +52,14 @@ class RawFirBuilderTotalKotlinTestCase : AbstractRawFirBuilderTestCase() {
         println("BASE PATH: $testDataPath")
         for (file in root.walkTopDown()) {
             if (file.isDirectory) continue
-            if (file.path.contains("testData") || file.path.contains("resources")) continue
+            val path = file.path
+            if ("testData" in path || "resources" in path || "api/js" in path.replace('\\', '/')) continue
             if (file.extension != "kt") continue
             try {
                 val ktFile = createKtFile(file.toRelativeString(root))
                 val firFile: FirFile
                 time += measureNanoTime {
-                    firFile = ktFile.toFirFile(stubMode)
+                    firFile = ktFile.toFirFile(RawFirBuilderMode.stubs(stubMode))
                 }
                 totalLength += StringBuilder().also { FirRenderer(it).visitFile(firFile) }.length
                 counter++
@@ -175,10 +176,11 @@ class RawFirBuilderTotalKotlinTestCase : AbstractRawFirBuilderTestCase() {
         val root = File(testDataPath)
         for (file in root.walkTopDown()) {
             if (file.isDirectory) continue
-            if (file.path.contains("testData") || file.path.contains("resources")) continue
+            val path = file.path
+            if ("testData" in path || "resources" in path || "api/js" in path.replace('\\', '/')) continue
             if (file.extension != "kt") continue
             val ktFile = createKtFile(file.toRelativeString(root))
-            val firFile = ktFile.toFirFile(stubMode = false)
+            val firFile = ktFile.toFirFile()
             try {
                 firFile.checkConsistency()
             } catch (e: Throwable) {
@@ -201,10 +203,11 @@ class RawFirBuilderTotalKotlinTestCase : AbstractRawFirBuilderTestCase() {
         var counter = 0
         for (file in root.walkTopDown()) {
             if (file.isDirectory) continue
-            if (file.path.contains("testData") || file.path.contains("resources")) continue
+            val path = file.path
+            if ("testData" in path || "testdata" in path || "resources" in path || "api/js" in path.replace('\\', '/')) continue
             if (file.extension != "kt") continue
             val ktFile = createKtFile(file.toRelativeString(root))
-            val firFile: FirFile = ktFile.toFirFile(stubMode = false)
+            val firFile: FirFile = ktFile.toFirFile()
             val psiSetViaFir = mutableSetOf<KtElement>()
             val psiSetDirect = mutableSetOf<KtElement>()
             firFile.accept(object : FirVisitorVoid() {
@@ -260,7 +263,10 @@ class RawFirBuilderTotalKotlinTestCase : AbstractRawFirBuilderTestCase() {
                                 it.parent is KtValueArgumentName || it.parent is KtTypeConstraint) ||
                         it.getStrictParentOfType<KtPackageDirective>() != null ||
                         it.getStrictParentOfType<KtImportDirective>() != null ||
-                        (it is KtPropertyAccessor && !it.hasBody())
+                        (it is KtPropertyAccessor && !it.hasBody()) ||
+                        it is KtConstantExpression && it.parent.let { parent ->
+                            parent is KtPrefixExpression && (parent.operationToken == KtTokens.MINUS || parent.operationToken == KtTokens.PLUS)
+                        }
             }
             if (psiSetDirect.isNotEmpty()) {
                 println("Total of $counter files processed successfully")

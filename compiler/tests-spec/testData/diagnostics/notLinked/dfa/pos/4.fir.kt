@@ -2,15 +2,6 @@
 // !DIAGNOSTICS: -UNUSED_EXPRESSION
 // SKIP_TXT
 
-/*
- * KOTLIN DIAGNOSTICS NOT LINKED SPEC TEST (POSITIVE)
- *
- * SECTIONS: dfa
- * NUMBER: 4
- * DESCRIPTION: Raw data flow analysis test
- * HELPERS: objects, enumClasses, classes, properties, typealiases
- */
-
 // FILE: other_package.kt
 
 package otherpackage
@@ -72,8 +63,8 @@ fun case_6(x: EmptyClass) {
 
 // TESTCASE NUMBER: 7
 fun case_7() {
-    if (anonymousTypeProperty == null || <!DEBUG_INFO_EXPRESSION_TYPE("anonymous & anonymous")!>anonymousTypeProperty<!> == null) {
-        <!DEBUG_INFO_EXPRESSION_TYPE("anonymous")!>anonymousTypeProperty<!>
+    if (anonymousTypeProperty == null || <!DEBUG_INFO_EXPRESSION_TYPE("<anonymous> & <anonymous>")!>anonymousTypeProperty<!> == null) {
+        <!DEBUG_INFO_EXPRESSION_TYPE("<anonymous>")!>anonymousTypeProperty<!>
     }
 }
 

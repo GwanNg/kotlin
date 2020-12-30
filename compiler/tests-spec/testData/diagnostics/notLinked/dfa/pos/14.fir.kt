@@ -2,18 +2,10 @@
 // !DIAGNOSTICS: -UNUSED_EXPRESSION
 // SKIP_TXT
 
-/*
- * KOTLIN DIAGNOSTICS NOT LINKED SPEC TEST (POSITIVE)
- *
- * SECTIONS: dfa
- * NUMBER: 14
- * DESCRIPTION: Raw data flow analysis test
- */
-
 // TESTCASE NUMBER: 1
 fun case_1(vararg x: Int?) {
     if (x != null) {
-        <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.IntArray & kotlin.IntArray")!>x<!>
+        <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Array<out kotlin.Int?> & kotlin.Array<out kotlin.Int?>")!>x<!>
         x[0]
     }
 }
@@ -29,8 +21,8 @@ fun case_2(vararg x: Int?) {
 
     x[0].also {
         if (it != null) {
-            <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Int & kotlin.Int")!>it<!>
-            <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Int & kotlin.Int")!>it<!>.inv()
+            <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Int & kotlin.Int?")!>it<!>
+            <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Int & kotlin.Int?")!>it<!>.inv()
         }
     }
 }

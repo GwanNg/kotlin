@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.idea.refactoring.copy;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.util.KtTestUtil;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.runner.RunWith;
 
@@ -25,7 +26,7 @@ public class CopyTestGenerated extends AbstractCopyTest {
     }
 
     public void testAllFilesPresentInCopy() throws Exception {
-        KotlinTestUtils.assertAllTestsPresentInSingleGeneratedClassWithExcluded(this.getClass(), new File("idea/testData/refactoring/copy"), Pattern.compile("^(.+)\\.test$"), null);
+        KtTestUtil.assertAllTestsPresentInSingleGeneratedClassWithExcluded(this.getClass(), new File("idea/testData/refactoring/copy"), Pattern.compile("^(.+)\\.test$"), null);
     }
 
     @TestMetadata("copyClassCaretInside/copyClassCaretInside.test")
@@ -81,6 +82,11 @@ public class CopyTestGenerated extends AbstractCopyTest {
     @TestMetadata("copyFIleToDefaultPackage/copyFIleToDefaultPackage.test")
     public void testCopyFIleToDefaultPackage_CopyFIleToDefaultPackage() throws Exception {
         runTest("idea/testData/refactoring/copy/copyFIleToDefaultPackage/copyFIleToDefaultPackage.test");
+    }
+
+    @TestMetadata("copyFileToRoot/copyFileToRoot.test")
+    public void testCopyFileToRoot_CopyFileToRoot() throws Exception {
+        runTest("idea/testData/refactoring/copy/copyFileToRoot/copyFileToRoot.test");
     }
 
     @TestMetadata("copyFIleWithPackageAndDirUnmatched/copyFIleWithPackageAndDirUnmatched.test")

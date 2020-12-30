@@ -1,17 +1,6 @@
 /*
- * Copyright 2010-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.ir
@@ -28,6 +17,7 @@ import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor
 import org.jetbrains.kotlin.descriptors.findClassAcrossModuleDependencies
 import org.jetbrains.kotlin.ir.backend.js.lower.serialization.ir.JsManglerDesc
 import org.jetbrains.kotlin.ir.declarations.*
+import org.jetbrains.kotlin.ir.declarations.impl.IrFactoryImpl
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.util.*
@@ -38,6 +28,7 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.scripting.compiler.plugin.loadScriptConfiguration
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import org.jetbrains.kotlin.test.testFramework.KtUsefulTestCase
+import org.jetbrains.kotlin.utils.fileUtils.withReplacedExtensionOrNull
 import org.jetbrains.kotlin.utils.rethrow
 import java.io.File
 import java.util.regex.Pattern
@@ -68,7 +59,7 @@ abstract class AbstractIrTextTestCase : AbstractIrGeneratorTestCase() {
 
         val stubGenerator = DeclarationStubGenerator(
             irModule.descriptor,
-            SymbolTable(signaturer), // TODO
+            SymbolTable(signaturer, IrFactoryImpl), // TODO
             myEnvironment.configuration.languageVersionSettings
         )
 
@@ -127,6 +118,18 @@ abstract class AbstractIrTextTestCase : AbstractIrGeneratorTestCase() {
             val copiedTrees = irFileCopy.dumpTreesFromLineNumber(irTreeFileLabel.lineNumber, normalizeNames = true)
             TestCase.assertEquals("IR dump mismatch after deep copy with symbols", actualTrees, copiedTrees)
             verify(irFileCopy)
+
+            if (!testFile.directives.contains("SKIP_KT_DUMP")) {
+                val kotlinLikeDump = irFile.dumpKotlinLike(
+                    KotlinLikeDumpOptions(
+                        printFileName = false,
+                        printFilePath = false,
+                        printFakeOverridesStrategy = FakeOverridesStrategy.NONE
+                    )
+                )
+                val kotlinLikeDumpExpectedFile = irTreeFileLabel.expectedTextFile.withReplacedExtensionOrNull(".txt", ".kt.txt")!!
+                KotlinTestUtils.assertEqualsToFile(kotlinLikeDumpExpectedFile, kotlinLikeDump)
+            }
         }
 
         try {
@@ -179,7 +182,8 @@ abstract class AbstractIrTextTestCase : AbstractIrGeneratorTestCase() {
             element.acceptChildrenVoid(this)
         }
 
-        override fun visitDeclaration(declaration: IrDeclaration) {
+        @OptIn(ObsoleteDescriptorBasedAPI::class)
+        override fun visitDeclaration(declaration: IrDeclarationBase) {
             if (declaration is IrSymbolOwner) {
                 declaration.symbol.checkBinding("decl", declaration)
 
@@ -205,18 +209,11 @@ abstract class AbstractIrTextTestCase : AbstractIrGeneratorTestCase() {
             visitDeclaration(declaration)
 
             require((declaration.origin == IrDeclarationOrigin.FAKE_OVERRIDE) == declaration.isFakeOverride) {
-                "${declaration.descriptor}: origin: ${declaration.origin}; isFakeOverride: ${declaration.isFakeOverride}"
+                "${declaration.render()}: origin: ${declaration.origin}; isFakeOverride: ${declaration.isFakeOverride}"
             }
         }
 
-        override fun visitField(declaration: IrField) {
-            visitDeclaration(declaration)
-
-            require((declaration.origin == IrDeclarationOrigin.FAKE_OVERRIDE) == declaration.isFakeOverride) {
-                "${declaration.descriptor}: origin: ${declaration.origin}; isFakeOverride: ${declaration.isFakeOverride}"
-            }
-        }
-
+        @OptIn(ObsoleteDescriptorBasedAPI::class)
         override fun visitFunction(declaration: IrFunction) {
             visitDeclaration(declaration)
 
@@ -257,7 +254,7 @@ abstract class AbstractIrTextTestCase : AbstractIrGeneratorTestCase() {
             visitFunction(declaration)
 
             require((declaration.origin == IrDeclarationOrigin.FAKE_OVERRIDE) == declaration.isFakeOverride) {
-                "${declaration.descriptor}: origin: ${declaration.origin}; isFakeOverride: ${declaration.isFakeOverride}"
+                "${declaration.render()}: origin: ${declaration.origin}; isFakeOverride: ${declaration.isFakeOverride}"
             }
         }
 
@@ -283,7 +280,7 @@ abstract class AbstractIrTextTestCase : AbstractIrGeneratorTestCase() {
 
         private fun IrSymbol.checkBinding(kind: String, irElement: IrElement) {
             if (!isBound) {
-                error("${javaClass.simpleName} $descriptor is unbound @$kind ${irElement.render()}")
+                error("${javaClass.simpleName} descriptor is unbound @$kind ${irElement.render()}")
             } else {
                 val irDeclaration = owner as? IrDeclaration
                 if (irDeclaration != null) {
@@ -297,16 +294,18 @@ abstract class AbstractIrTextTestCase : AbstractIrGeneratorTestCase() {
 
             val otherSymbol = symbolForDeclaration.getOrPut(owner) { this }
             if (this != otherSymbol) {
-                error("Multiple symbols for $descriptor @$kind ${irElement.render()}")
+                error("Multiple symbols for descriptor of @$kind ${irElement.render()}")
             }
         }
 
+        @OptIn(ObsoleteDescriptorBasedAPI::class)
         override fun visitClass(declaration: IrClass) {
             visitDeclaration(declaration)
 
             checkTypeParameters(declaration.descriptor, declaration, declaration.descriptor.declaredTypeParameters)
         }
 
+        @ObsoleteDescriptorBasedAPI
         private fun checkTypeParameters(
             descriptor: DeclarationDescriptor,
             declaration: IrTypeParametersContainer,

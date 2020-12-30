@@ -2,16 +2,6 @@
 // !DIAGNOSTICS: -UNUSED_EXPRESSION -UNUSED_VARIABLE -UNUSED_VALUE
 // SKIP_TXT
 
-/*
- * KOTLIN DIAGNOSTICS NOT LINKED SPEC TEST (NEGATIVE)
- *
- * SECTIONS: dfa
- * NUMBER: 30
- * DESCRIPTION: Raw data flow analysis test
- * HELPERS: classes, objects, typealiases, functions, enumClasses, interfaces, sealedClasses
- * ISSUES: KT-30907
- */
-
 // TESTCASE NUMBER: 1
 class Case1(val x: Any?) {
     val y = x!!
@@ -42,6 +32,6 @@ class Case5(val y: Any?): ClassWithCostructorParam(y as Interface1), Interface1 
 fun case_6(a: Int?) = object : ClassWithCostructorParam(a!!) {
     fun run() = a.<!INAPPLICABLE_CANDIDATE!>toShort<!>()
     init {
-        <!AMBIGUITY!>println<!>(a.<!INAPPLICABLE_CANDIDATE!>toShort<!>())
+        println(a.<!INAPPLICABLE_CANDIDATE!>toShort<!>())
     }
 }

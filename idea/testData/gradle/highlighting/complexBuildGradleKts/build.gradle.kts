@@ -110,6 +110,7 @@ extra["IntellijCoreDependencies"] =
 extra["compilerModules"] = arrayOf(
     ":compiler:util",
     ":compiler:container",
+    ":compiler:resolution.common",
     ":compiler:resolution",
     ":compiler:serialization",
     ":compiler:psi",
@@ -148,6 +149,8 @@ extra["compilerModules"] = arrayOf(
     ":kotlin-build-common",
     ":core:metadata",
     ":core:metadata.jvm",
+    ":core:deserialization.common",
+    ":core:deserialization.common.jvm",
     ":core:descriptors",
     ":core:descriptors.jvm",
     ":core:deserialization",
@@ -427,8 +430,7 @@ tasks {
         }
     }
 
-    create("mainC" +
-                   "eck") {
+    create("mainCeck") {
         dependsOn("test")
     }
 }

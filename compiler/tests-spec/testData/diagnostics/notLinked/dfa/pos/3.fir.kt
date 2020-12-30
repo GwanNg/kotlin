@@ -2,15 +2,6 @@
 // !DIAGNOSTICS: -UNUSED_EXPRESSION
 // SKIP_TXT
 
-/*
- * KOTLIN DIAGNOSTICS NOT LINKED SPEC TEST (POSITIVE)
- *
- * SECTIONS: dfa
- * NUMBER: 3
- * DESCRIPTION: Raw data flow analysis test
- * HELPERS: objects, enumClasses, classes, properties, typealiases
- */
-
 // FILE: other_package.kt
 
 package otherpackage
@@ -296,10 +287,10 @@ fun case_25(b: Boolean) {
     val y = if (b) x else null
 
     if (y != null) {
-        val z = <!DEBUG_INFO_EXPRESSION_TYPE("anonymous?")!>y()<!>
+        val z = <!DEBUG_INFO_EXPRESSION_TYPE("<anonymous>?")!>y()<!>
 
         if (z == null) {
-            <!DEBUG_INFO_EXPRESSION_TYPE("anonymous?")!>z<!>
+            <!DEBUG_INFO_EXPRESSION_TYPE("<anonymous>?")!>z<!>
         }
     }
 }

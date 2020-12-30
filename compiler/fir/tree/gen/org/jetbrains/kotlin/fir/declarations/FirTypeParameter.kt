@@ -5,7 +5,6 @@
 
 package org.jetbrains.kotlin.fir.declarations
 
-import org.jetbrains.kotlin.fir.FirAnnotationContainer
 import org.jetbrains.kotlin.fir.FirPureAbstractElement
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.FirSourceElement
@@ -22,10 +21,12 @@ import org.jetbrains.kotlin.fir.visitors.*
  * DO NOT MODIFY IT MANUALLY
  */
 
-abstract class FirTypeParameter : FirPureAbstractElement(), FirTypeParameterRef, FirDeclaration, FirSymbolOwner<FirTypeParameter>, FirAnnotationContainer {
+abstract class FirTypeParameter : FirPureAbstractElement(), FirTypeParameterRef, FirAnnotatedDeclaration, FirSymbolOwner<FirTypeParameter> {
     abstract override val source: FirSourceElement?
     abstract override val session: FirSession
     abstract override val resolvePhase: FirResolvePhase
+    abstract override val origin: FirDeclarationOrigin
+    abstract override val attributes: FirDeclarationAttributes
     abstract val name: Name
     abstract override val symbol: FirTypeParameterSymbol
     abstract val variance: Variance
@@ -36,6 +37,8 @@ abstract class FirTypeParameter : FirPureAbstractElement(), FirTypeParameterRef,
     override fun <R, D> accept(visitor: FirVisitor<R, D>, data: D): R = visitor.visitTypeParameter(this, data)
 
     abstract override fun replaceResolvePhase(newResolvePhase: FirResolvePhase)
+
+    abstract fun replaceBounds(newBounds: List<FirTypeRef>)
 
     abstract override fun <D> transformAnnotations(transformer: FirTransformer<D>, data: D): FirTypeParameter
 }

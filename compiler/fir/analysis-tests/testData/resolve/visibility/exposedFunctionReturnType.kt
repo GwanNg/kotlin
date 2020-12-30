@@ -5,5 +5,13 @@ class A {
 }
 
 abstract class B {
-    fun <!EXPOSED_FUNCTION_RETURN_TYPE!>foo<!>(str: String): A.InnerA
+    <!EXPOSED_FUNCTION_RETURN_TYPE{LT}!>fun <!EXPOSED_FUNCTION_RETURN_TYPE{PSI}!>foo<!>(str: String): A.InnerA<!>
+}
+
+private enum class Some {
+    FIRST {
+        override fun foo(): Some = FIRST
+    };
+
+    abstract fun foo(): Some
 }

@@ -80,6 +80,24 @@ class Strings {
     }
 
     @Sample
+    fun filter() {
+        val text = "a1b2c3d4e5"
+
+        val textWithOnlyDigits = text.filter { it.isDigit() }
+
+        assertPrints(textWithOnlyDigits, "12345")
+    }
+
+    @Sample
+    fun filterNot() {
+        val text = "a1b2c3d4e5"
+
+        val textWithoutDigits = text.filterNot { it.isDigit() }
+
+        assertPrints(textWithoutDigits, "abcde")
+    }
+
+    @Sample
     fun zip() {
         val stringA = "abcd"
         val stringB = "zyx"
@@ -389,5 +407,18 @@ class Strings {
         assertPrints(matchDetails(inputString, toFind), "Searching for 'ever' in 'Never ever give up' starting at position 0: Found at 1")
         assertPrints(matchDetails(inputString, toFind, 2), "Searching for 'ever' in 'Never ever give up' starting at position 2: Found at 6")
         assertPrints(matchDetails(inputString, toFind, 10), "Searching for 'ever' in 'Never ever give up' starting at position 10: Not found")
+    }
+
+    @Sample
+    fun last() {
+        val string = "Kotlin 1.4.0"
+        assertPrints(string.last(), "0")
+        assertPrints(string.last { it.isLetter() }, "n")
+        assertPrints(string.lastOrNull { it > 'z' }, "null")
+        assertFails { string.last { it > 'z' } }
+
+        val emptyString = ""
+        assertPrints(emptyString.lastOrNull(), "null")
+        assertFails { emptyString.last() }
     }
 }

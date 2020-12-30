@@ -1,15 +1,6 @@
 // !USE_EXPERIMENTAL: kotlin.contracts.ExperimentalContracts
 // SKIP_TXT
 
-/*
- * KOTLIN DIAGNOSTICS NOT LINKED SPEC TEST (NEGATIVE)
- *
- * SECTIONS: contracts, analysis, controlFlow, initialization
- * NUMBER: 3
- * DESCRIPTION: val/var reassignment and/or uninitialized variable usages with compelx control flow inside/outside lambda of contract function with CallsInPlace effect
- * HELPERS: enumClasses, contractFunctions
- */
-
 // TESTCASE NUMBER: 1
 fun case_1(value_1: EnumClass?) {
     val value_2: Int
@@ -21,7 +12,7 @@ fun case_1(value_1: EnumClass?) {
         null -> funWithExactlyOnceCallsInPlace { value_2 = 5 }
     }
 
-    value_2.inc()
+    <!UNINITIALIZED_VARIABLE!>value_2<!>.inc()
 }
 
 // TESTCASE NUMBER: 2
@@ -36,9 +27,9 @@ fun case_2(value_1: Any?) {
         } else {
             funWithAtMostOnceCallsInPlace { value_2 = 2 }
         }
-        value_2.dec()
+        <!UNINITIALIZED_VARIABLE!>value_2<!>.dec()
     }
-    value_2.dec()
+    <!UNINITIALIZED_VARIABLE!>value_2<!>.dec()
 }
 
 // TESTCASE NUMBER: 3
@@ -74,9 +65,9 @@ fun case_4(value_1: EnumClassSingle?) {
                 funWithUnknownCallsInPlace { value_2 = 2 }
             }
         }
-        value_2.minus(5)
+        <!UNINITIALIZED_VARIABLE!>value_2<!>.minus(5)
     }
-    value_2.minus(5)
+    <!UNINITIALIZED_VARIABLE!>value_2<!>.minus(5)
 }
 
 // TESTCASE NUMBER: 5
@@ -89,7 +80,7 @@ fun case_5() {
         funWithAtMostOnceCallsInPlace { value_2 = 1 }
     }
 
-    value_2++
+    <!UNINITIALIZED_VARIABLE!>value_2<!>++
 }
 
 // TESTCASE NUMBER: 6
@@ -101,7 +92,7 @@ fun case_6() {
     } catch (e: Exception) {
         throw Exception()
     } finally {
-        println(value_2.inc())
+        println(<!UNINITIALIZED_VARIABLE!>value_2<!>.inc())
     }
 
     value_2++
@@ -121,7 +112,7 @@ fun case_7() {
         }
     }
 
-    println(value_1.inc())
+    println(<!UNINITIALIZED_VARIABLE!>value_1<!>.inc())
 }
 
 // TESTCASE NUMBER: 8
@@ -136,7 +127,7 @@ fun case_8() {
         }
         throw Exception()
     }
-    println(x.inc())
+    println(<!UNINITIALIZED_VARIABLE!>x<!>.inc())
 }
 
 // TESTCASE NUMBER: 9
@@ -148,7 +139,7 @@ fun case_9() {
             return@outer
         }
     }
-    println(x.inc())
+    println(<!UNINITIALIZED_VARIABLE!>x<!>.inc())
 }
 
 // TESTCASE NUMBER: 10
@@ -165,5 +156,5 @@ fun case_10() {
         }
         return@outer
     }
-    println(x.inc())
+    println(<!UNINITIALIZED_VARIABLE!>x<!>.inc())
 }

@@ -17,14 +17,17 @@
 package org.jetbrains.kotlin.gradle
 
 import org.gradle.api.logging.LogLevel
+import org.gradle.api.logging.configuration.WarningMode
 import org.jetbrains.kotlin.gradle.plugin.MULTIPLE_KOTLIN_PLUGINS_LOADED_WARNING
 import org.jetbrains.kotlin.gradle.plugin.MULTIPLE_KOTLIN_PLUGINS_SPECIFIC_PROJECTS_WARNING
 import org.jetbrains.kotlin.gradle.scripting.internal.ScriptingGradleSubplugin
 import org.jetbrains.kotlin.gradle.tasks.USING_JVM_INCREMENTAL_COMPILATION_MESSAGE
 import org.jetbrains.kotlin.gradle.util.*
-import org.jetbrains.kotlin.test.KotlinTestUtils
+import org.jetbrains.kotlin.test.util.KtTestUtil
 import org.junit.Test
 import java.io.File
+import java.nio.file.FileSystemException
+import java.nio.file.Files
 import java.util.zip.ZipFile
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -97,6 +100,18 @@ class KotlinGradleIT : BaseGradleIT() {
         project.build("build") {
             assertSuccessful()
             assertTasksUpToDate(":compileKotlin", ":compileTestKotlin")
+        }
+    }
+
+    @Test
+    fun testKotlinCompileInFolderWithSpaces() {
+        val project = Project(projectName = "Project Path With Spaces")
+
+        project.build("build") {
+            assertSuccessful()
+            assertReportExists()
+            assertTasksExecuted(":compileKotlin", ":compileTestKotlin")
+            assertNotContains("Forcing System.gc")
         }
     }
 
@@ -352,7 +367,7 @@ class KotlinGradleIT : BaseGradleIT() {
     }
 
     @Test
-    fun testDowngradeTo106() {
+    fun testDowngradePluginVersion() {
         val project = Project("kotlinProject")
         val options = defaultBuildOptions().copy(incremental = true, withDaemon = false)
 
@@ -360,7 +375,7 @@ class KotlinGradleIT : BaseGradleIT() {
             assertSuccessful()
         }
 
-        project.build("clean", "assemble", options = options.copy(kotlinVersion = "1.0.6")) {
+        project.build("clean", "assemble", options = options.copy(kotlinVersion = "1.3.41")) {
             assertSuccessful()
         }
     }
@@ -376,7 +391,7 @@ class KotlinGradleIT : BaseGradleIT() {
             """.trimIndent()
         }
 
-        project.build("build", "install") {
+        project.build("build", "install", options = defaultBuildOptions().copy(warningMode = WarningMode.Summary)) {
             assertSuccessful()
             assertTasksExecuted(":compileKotlin", ":compileTestKotlin")
             val pomLines = File(project.projectDir, "build/poms/pom-default.xml").readLines()
@@ -588,14 +603,12 @@ class KotlinGradleIT : BaseGradleIT() {
 
     @Test
     fun testNoUnnamedInputsOutputs() {
-        // Use a new Gradle version to enable the usage of the input/output builders, which are new API:
-        val gradleVersionRequirement = GradleVersionRequired.AtLeast("4.4")
 
         val projects = listOf(
-            Project("simpleProject", gradleVersionRequirement),
-            Project("kotlin2JsProject", gradleVersionRequirement),
-            Project("multiplatformProject", gradleVersionRequirement),
-            Project("simple", gradleVersionRequirement, "kapt2")
+            Project("simpleProject"),
+            Project("kotlin2JsProject"),
+            Project("multiplatformProject"),
+            Project("simple", directoryPrefix = "kapt2")
         )
 
         projects.forEach {
@@ -668,8 +681,27 @@ class KotlinGradleIT : BaseGradleIT() {
     }
 
     @Test
-    fun testInternalTest() {
-        Project("internalTest").build("build") {
+    fun testInternalTest() = with(
+        Project("internalTest")
+    ) {
+        build("build") {
+            assertSuccessful()
+            assertReportExists()
+            assertTasksExecuted(":compileKotlin", ":compileTestKotlin")
+        }
+
+        // Check KT-35341: use symlinked build dir
+        val buildDir = projectDir.resolve("build")
+        buildDir.deleteRecursively()
+        val externalBuildDir = Files.createTempDirectory(workingDir.toPath(), "externalBuild")
+        try {
+            Files.createSymbolicLink(buildDir.toPath(), externalBuildDir)
+        } catch (_: FileSystemException) {
+            //Windows requires SeSymbolicLink privilege and we can't grant it
+            null
+        } ?: return@with
+
+        build("build") {
             assertSuccessful()
             assertReportExists()
             assertTasksExecuted(":compileKotlin", ":compileTestKotlin")
@@ -743,12 +775,12 @@ class KotlinGradleIT : BaseGradleIT() {
         with(Project("simpleProject")) {
             setupWorkingDir()
             // Add a dependency with an explicit lower Kotlin version that has a kotlin-stdlib transitive dependency:
-            gradleBuildScript().appendText("\ndependencies { compile 'org.jetbrains.kotlin:kotlin-reflect:1.2.71' }")
-            testResolveAllConfigurations {
+            gradleBuildScript().appendText("\ndependencies { implementation 'org.jetbrains.kotlin:kotlin-reflect:1.2.71' }")
+            testResolveAllConfigurations(options = defaultBuildOptions().copy(warningMode = WarningMode.Summary)) {
                 assertSuccessful()
-                assertContains(">> :compile --> kotlin-reflect-1.2.71.jar")
+                assertContains(">> :compileClasspath --> kotlin-reflect-1.2.71.jar")
                 // Check that the default newer Kotlin version still wins for 'kotlin-stdlib':
-                assertContains(">> :compile --> kotlin-stdlib-${defaultBuildOptions().kotlinVersion}.jar")
+                assertContains(">> :compileClasspath --> kotlin-stdlib-${defaultBuildOptions().kotlinVersion}.jar")
             }
         }
 
@@ -894,11 +926,11 @@ class KotlinGradleIT : BaseGradleIT() {
     }
 
     @Test
-    fun testNewModelInOldJvmPlugin() = with(Project("new-model-in-old-plugin", GradleVersionRequired.AtLeast("5.0"))) {
+    fun testNewModelInOldJvmPlugin() = with(Project("new-model-in-old-plugin")) {
         setupWorkingDir()
         gradleBuildScript().modify(::transformBuildScriptWithPluginsDsl)
 
-        build("publish", "check", "runBenchmark") {
+        build("publish", "check", "runBenchmark", options = defaultBuildOptions().copy(warningMode = WarningMode.Summary)) {
             assertSuccessful()
             assertTasksExecuted(":compileKotlin", ":compileTestKotlin", ":compileBenchmarkKotlin", ":test", ":runBenchmark")
 
@@ -1021,11 +1053,38 @@ class KotlinGradleIT : BaseGradleIT() {
             ":lib1:compileDebugUnitTestKotlin",
             options = defaultBuildOptions().copy(
                 androidGradlePluginVersion = AGPVersion.v3_2_0,
-                androidHome = KotlinTestUtils.findAndroidSdk(),
+                androidHome = KtTestUtil.findAndroidSdk(),
             ),
         ) {
             assertSuccessful()
             assertTasksExecuted(":lib1:compileDebugKotlin")
+        }
+    }
+
+    /** Regression test for KT-38692. */
+    @Test
+    fun testIncrementalWhenNoKotlinSources() = with(
+        Project("kotlinProject")
+    ) {
+        setupWorkingDir()
+        assertTrue(this.allKotlinFiles.toList().isNotEmpty())
+        build(":compileKotlin") {
+            assertSuccessful()
+            assertTasksExecuted(":compileKotlin")
+        }
+
+        // Remove all Kotlin sources and force non-incremental run
+        allKotlinFiles.forEach { assertTrue(it.delete()) }
+        projectDir.resolve("src/main/java/Sample.java").also {
+            it.parentFile.mkdirs()
+            it.writeText("public class Sample {}")
+        }
+        build("compileKotlin", "--rerun-tasks") {
+            assertSuccessful()
+            assertTasksExecuted(":compileKotlin")
+            val compiledKotlinClasses = fileInWorkingDir(classesDir()).allFilesWithExtension("class").toList()
+
+            assertTrue(compiledKotlinClasses.isEmpty())
         }
     }
 }

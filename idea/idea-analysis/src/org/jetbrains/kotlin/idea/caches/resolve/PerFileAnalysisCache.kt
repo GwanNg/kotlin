@@ -28,6 +28,7 @@ import org.jetbrains.kotlin.frontend.di.createContainerForLazyBodyResolve
 import org.jetbrains.kotlin.idea.caches.project.getModuleInfo
 import org.jetbrains.kotlin.idea.caches.trackers.clearInBlockModifications
 import org.jetbrains.kotlin.idea.caches.trackers.inBlockModifications
+import org.jetbrains.kotlin.idea.compiler.IdeMainFunctionDetectorFactory
 import org.jetbrains.kotlin.idea.project.IdeaModuleStructureOracle
 import org.jetbrains.kotlin.idea.project.findAnalyzerServices
 import org.jetbrains.kotlin.idea.project.languageVersionSettings
@@ -57,9 +58,11 @@ internal class PerFileAnalysisCache(val file: KtFile, componentProvider: Compone
     private val cache = HashMap<PsiElement, AnalysisResult>()
     private var fileResult: AnalysisResult? = null
     private val lock = ReentrantLock()
-    private val guardLock = CancellableSimpleLock(lock) {
-        ProgressIndicatorProvider.checkCanceled()
-    }
+    private val guardLock = CancellableSimpleLock(lock,
+                                                  checkCancelled = {
+                                                      ProgressIndicatorProvider.checkCanceled()
+                                                  },
+                                                  interruptedExceptionHandler = { throw ProcessCanceledException(it) })
 
     private fun check(element: KtElement) {
         checkWithAttachment(element.containingFile == file, {
@@ -120,6 +123,8 @@ internal class PerFileAnalysisCache(val file: KtFile, componentProvider: Compone
                 // IF there is a cached result for ktFile and there are inBlockModifications
                 fileResult = fileResult?.let { result ->
                     var analysisResult = result
+                    // Force full analysis when existed is erroneous
+                    if (analysisResult.isError()) return@let null
                     for (inBlockModification in inBlockModifications) {
                         val resultCtx = analysisResult.bindingContext
 
@@ -160,6 +165,9 @@ internal class PerFileAnalysisCache(val file: KtFile, componentProvider: Compone
                 }
                 throw e
             }
+        }
+        if (fileResult == null) {
+            file.clearInBlockModifications()
         }
         return fileResult
     }
@@ -224,6 +232,7 @@ internal class PerFileAnalysisCache(val file: KtFile, componentProvider: Compone
             return AnalysisResult.EMPTY
         }
 
+        moduleDescriptor.assertValid()
         try {
             return KotlinResolveDataProvider.analyze(
                 project,
@@ -441,7 +450,8 @@ private object KotlinResolveDataProvider {
                 bodyResolveCache,
                 targetPlatform.findAnalyzerServices(project),
                 analyzableElement.languageVersionSettings,
-                IdeaModuleStructureOracle()
+                IdeaModuleStructureOracle(),
+                IdeMainFunctionDetectorFactory()
             ).get<LazyTopDownAnalyzer>()
 
             lazyTopDownAnalyzer.analyzeDeclarations(TopDownAnalysisMode.TopLevelDeclarations, listOf(analyzableElement))

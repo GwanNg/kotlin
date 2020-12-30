@@ -2,15 +2,6 @@
 // !DIAGNOSTICS: -UNUSED_EXPRESSION
 // SKIP_TXT
 
-/*
- * KOTLIN DIAGNOSTICS NOT LINKED SPEC TEST (POSITIVE)
- *
- * SECTIONS: dfa
- * NUMBER: 33
- * DESCRIPTION: Raw data flow analysis test
- * HELPERS: classes, objects, typealiases, enumClasses, interfaces, sealedClasses
- */
-
 // TESTCASE NUMBER: 1
 fun case_1() {
     var x: Any? = null
@@ -94,6 +85,6 @@ fun case_6() {
         null!!
     }
 
-    <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Any?")!>x<!>
-    <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Any?")!>x<!>.<!AMBIGUITY!>minus<!>(10.0)
+    <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Any?"), UNINITIALIZED_VARIABLE!>x<!>
+    <!DEBUG_INFO_EXPRESSION_TYPE("kotlin.Any?"), UNINITIALIZED_VARIABLE!>x<!>.<!INAPPLICABLE_CANDIDATE!>minus<!>(10.0)
 }

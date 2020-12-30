@@ -5,7 +5,7 @@
 
 package org.jetbrains.kotlin.fir.backend
 
-import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
+import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.expressions.FirReturnExpression
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.util.parentClassOrNull
@@ -13,12 +13,22 @@ import org.jetbrains.kotlin.ir.util.parentClassOrNull
 class Fir2IrConversionScope {
     private val parentStack = mutableListOf<IrDeclarationParent>()
 
+    private val containingFirClassStack = mutableListOf<FirClass<*>>()
+
     fun <T : IrDeclarationParent?> withParent(parent: T, f: T.() -> Unit): T {
         if (parent == null) return parent
         parentStack += parent
         parent.f()
         parentStack.removeAt(parentStack.size - 1)
         return parent
+    }
+
+    fun containingFileIfAny(): IrFile? = parentStack.getOrNull(0) as? IrFile
+
+    fun withContainingFirClass(containingFirClass: FirClass<*>, f: () -> Unit) {
+        containingFirClassStack += containingFirClass
+        f()
+        containingFirClassStack.removeAt(containingFirClassStack.size - 1)
     }
 
     fun parentFromStack(): IrDeclarationParent = parentStack.last()
@@ -37,6 +47,8 @@ class Fir2IrConversionScope {
         declaration.parent = parentStack.last()
         return declaration
     }
+
+    fun containerFirClass(): FirClass<*>? = containingFirClassStack.lastOrNull()
 
     private val functionStack = mutableListOf<IrFunction>()
 
@@ -65,20 +77,33 @@ class Fir2IrConversionScope {
         return klass
     }
 
-    private val subjectVariableStack = mutableListOf<IrVariable>()
+    private val whenSubjectVariableStack = mutableListOf<IrVariable>()
+    private val safeCallSubjectVariableStack = mutableListOf<IrVariable>()
 
-    fun <T> withSubject(subject: IrVariable?, f: () -> T): T {
-        if (subject != null) subjectVariableStack += subject
+    fun <T> withWhenSubject(subject: IrVariable?, f: () -> T): T {
+        if (subject != null) whenSubjectVariableStack += subject
         val result = f()
-        if (subject != null) subjectVariableStack.removeAt(subjectVariableStack.size - 1)
+        if (subject != null) whenSubjectVariableStack.removeAt(whenSubjectVariableStack.size - 1)
         return result
     }
 
-    fun returnTarget(expression: FirReturnExpression): IrFunction {
+    fun <T> withSafeCallSubject(subject: IrVariable?, f: () -> T): T {
+        if (subject != null) safeCallSubjectVariableStack += subject
+        val result = f()
+        if (subject != null) safeCallSubjectVariableStack.removeAt(safeCallSubjectVariableStack.size - 1)
+        return result
+    }
+
+    fun returnTarget(expression: FirReturnExpression, declarationStorage: Fir2IrDeclarationStorage): IrFunction {
         val firTarget = expression.target.labeledElement
+        val irTarget = (firTarget as? FirFunction)?.let {
+            when (it) {
+                is FirConstructor -> declarationStorage.getCachedIrConstructor(it)
+                else -> declarationStorage.getCachedIrFunction(it)
+            }
+        }
         for (potentialTarget in functionStack.asReversed()) {
-            // TODO: remove comparison by name
-            if (potentialTarget.name == (firTarget as? FirSimpleFunction)?.name) {
+            if (potentialTarget == irTarget) {
                 return potentialTarget
             }
         }
@@ -90,24 +115,19 @@ class Fir2IrConversionScope {
     fun dispatchReceiverParameter(irClass: IrClass): IrValueParameter? {
         for (function in functionStack.asReversed()) {
             if (function.parentClassOrNull == irClass) {
+                // An inner class's constructor needs an instance of the outer class as a dispatch receiver.
+                // However, if we are converting `this` receiver inside that constructor, now we should point to the inner class instance.
+                if (function is IrConstructor && irClass.isInner) {
+                    irClass.thisReceiver?.let { return it }
+                }
                 function.dispatchReceiverParameter?.let { return it }
             }
         }
         return irClass.thisReceiver
     }
 
-    fun lastDispatchReceiverParameter(): IrValueParameter? {
-        // Use the dispatch receiver of the containing/enclosing functions (from the last to the first)
-        for (function in functionStack.asReversed()) {
-            function.dispatchReceiverParameter?.let { return it }
-        }
-
-        // Use the dispatch receiver of the containing class
-        val lastClass = classStack.lastOrNull()
-        return lastClass?.thisReceiver
-    }
-
     fun lastClass(): IrClass? = classStack.lastOrNull()
 
-    fun lastSubject(): IrVariable = subjectVariableStack.last()
+    fun lastWhenSubject(): IrVariable = whenSubjectVariableStack.last()
+    fun lastSafeCallSubject(): IrVariable = safeCallSubjectVariableStack.last()
 }

@@ -32,6 +32,7 @@ import com.intellij.openapi.projectRoots.JavaSdk
 import com.intellij.openapi.projectRoots.ProjectJdkTable
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.projectRoots.impl.SdkConfigurationUtil
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TestDialog
 import com.intellij.openapi.util.io.FileUtil
@@ -53,6 +54,7 @@ import org.gradle.wrapper.GradleWrapperMain
 import org.gradle.wrapper.PathAssembler
 import org.intellij.lang.annotations.Language
 import org.jetbrains.annotations.NonNls
+import org.jetbrains.kotlin.idea.test.GradleProcessOutputInterceptor
 import org.jetbrains.kotlin.idea.test.KotlinSdkCreationChecker
 import org.jetbrains.kotlin.idea.test.PluginTestCaseBase
 import org.jetbrains.kotlin.idea.util.getProjectJdkTableSafe
@@ -87,7 +89,7 @@ import java.util.zip.ZipFile
 @Parameterized.UseParametersRunnerFactory(RunnerFactoryWithMuteInDatabase::class)
 abstract class GradleImportingTestCase : ExternalSystemImportingTestCase() {
 
-    protected var sdkCreationChecker : KotlinSdkCreationChecker? = null
+    protected var sdkCreationChecker: KotlinSdkCreationChecker? = null
 
     private val removedSdks: MutableList<Sdk> = SmartList()
 
@@ -112,7 +114,7 @@ abstract class GradleImportingTestCase : ExternalSystemImportingTestCase() {
 
     open fun isApplicableTest(): Boolean = true
 
-    open fun jvmHeapArgsByGradleVersion(version: String) : String = when {
+    open fun jvmHeapArgsByGradleVersion(version: String): String = when {
         version.startsWith("4.") ->
             // work-around due to memory leak in class loaders in gradle. The amount of used memory in the gradle daemon
             // is drammatically increased on every reimport of project due to sequential compilation of build scripts.
@@ -120,7 +122,7 @@ abstract class GradleImportingTestCase : ExternalSystemImportingTestCase() {
             "-Xmx256m -XX:MaxPermSize=64m"
         else ->
             // 128M should be enough for gradle 5.0+ (leak is fixed), and <4.0 (amount of tests is less)
-            "-Xms128M -Xmx128m -XX:MaxPermSize=64m"
+            "-Xms128M -Xmx192m -XX:MaxPermSize=64m"
     }
 
     override fun setUp() {
@@ -137,7 +139,10 @@ abstract class GradleImportingTestCase : ExternalSystemImportingTestCase() {
             val jdkHomeDir = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(File(myJdkHome))!!
             val jdk = SdkConfigurationUtil.setupSdk(arrayOfNulls(0), jdkHomeDir, JavaSdk.getInstance(), true, null, GRADLE_JDK_NAME)
             TestCase.assertNotNull("Cannot create JDK for $myJdkHome", jdk)
-            jdkTable.addJdk(jdk!!)
+            if (!jdkTable.allJdks.contains(jdk)) {
+                jdkTable.addJdk(jdk!!, testRootDisposable)
+                ProjectRootManager.getInstance(myProject).projectSdk = jdk
+            }
             FileTypeManager.getInstance().associateExtension(GroovyFileType.GROOVY_FILE_TYPE, "gradle")
 
         }
@@ -158,6 +163,8 @@ abstract class GradleImportingTestCase : ExternalSystemImportingTestCase() {
             "${jvmHeapArgsByGradleVersion(gradleVersion)} -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${System.getProperty("user.dir")}"
 
         sdkCreationChecker = KotlinSdkCreationChecker()
+
+        GradleProcessOutputInterceptor.install(testRootDisposable)
     }
 
     override fun tearDown() {
@@ -212,12 +219,16 @@ abstract class GradleImportingTestCase : ExternalSystemImportingTestCase() {
     override fun getExternalSystemConfigFileName(): String = "build.gradle"
 
     @Throws(IOException::class)
-    protected open fun importProjectUsingSingeModulePerGradleProject(config: String? = null) {
+    protected open fun importProjectUsingSingeModulePerGradleProject(config: String? = null, skipIndexing: Boolean? = null) {
         currentExternalProjectSettings.isResolveModulePerSourceSet = false
-        importProject(config)
+        importProject(config, skipIndexing)
     }
 
-    override fun importProject() {
+    open fun importProject() {
+        importProject(skipIndexing = null)
+    }
+
+    override fun importProject(skipIndexing: Boolean?) {
         ExternalSystemApiUtil.subscribe(
             myProject,
             GradleConstants.SYSTEM_ID,
@@ -229,14 +240,40 @@ abstract class GradleImportingTestCase : ExternalSystemImportingTestCase() {
                     }
                 }
             })
-        super.importProject()
+        super.importProject(skipIndexing)
     }
 
     @Throws(IOException::class)
-    override fun importProject(@NonNls @Language("Groovy") config: String?) {
+    override fun importProject(@NonNls @Language("Groovy") config: String?, skipIndexing: Boolean?) {
         var config = config
         config = injectRepo(config)
-        super.importProject(config)
+        super.importProject(config, skipIndexing)
+    }
+
+    override fun handleImportFailure(errorMessage: String, errorDetails: String?) {
+        val gradleOutput = GradleProcessOutputInterceptor.getInstance()?.getOutput().orEmpty()
+
+        // Typically Gradle error message consists of a line with the description of the error followed by
+        // a multi-line stacktrace. The idea is to cut off the stacktrace if it is already contained in
+        // the intercepted Gradle process output to avoid unnecessary verbosity.
+        val compactErrorMessage = when (val indexOfNewLine = errorMessage.indexOf('\n')) {
+            -1 -> errorMessage
+            else -> {
+                val compactErrorMessage = errorMessage.substring(0, indexOfNewLine)
+                val theRest = errorMessage.substring(indexOfNewLine + 1)
+                if (theRest in gradleOutput) compactErrorMessage else errorMessage
+            }
+        }
+
+        val failureMessage = buildString {
+            append("Gradle import failed: ").append(compactErrorMessage).append('\n')
+            if (!errorDetails.isNullOrBlank()) append("Error details: ").append(errorDetails).append('\n')
+            append("Gradle process output (BEGIN):\n")
+            append(gradleOutput)
+            if (!gradleOutput.endsWith('\n')) append('\n')
+            append("Gradle process output (END)")
+        }
+        fail(failureMessage)
     }
 
     protected open fun injectRepo(@NonNls @Language("Groovy") config: String?): String {
@@ -320,6 +357,14 @@ abstract class GradleImportingTestCase : ExternalSystemImportingTestCase() {
         return File(baseDir, getTestName(true).substringBefore("_"))
     }
 
+    protected fun configureKotlinVersionAndProperties(text: String, properties: Map<String, String>? = null): String {
+        var result = text
+        (properties ?: mapOf("kotlin_plugin_version" to LATEST_STABLE_GRADLE_PLUGIN_VERSION)).forEach { (key, value) ->
+            result = result.replace("{{${key}}}", value)
+        }
+        return result
+    }
+
     protected open fun configureByFiles(properties: Map<String, String>? = null): List<VirtualFile> {
         val rootDir = testDataDirectory()
         assert(rootDir.exists()) { "Directory ${rootDir.path} doesn't exist" }
@@ -329,10 +374,7 @@ abstract class GradleImportingTestCase : ExternalSystemImportingTestCase() {
                 it.isDirectory -> null
 
                 !it.name.endsWith(SUFFIX) -> {
-                    var text = FileUtil.loadFile(it, /* convertLineSeparators = */ true)
-                    (properties ?: mapOf("kotlin_plugin_version" to LATEST_STABLE_GRADLE_PLUGIN_VERSION)).forEach { key, value ->
-                        text = text.replace("{{${key}}}", value)
-                    }
+                    val text = configureKotlinVersionAndProperties(FileUtil.loadFile(it, /* convertLineSeparators = */ true), properties)
                     val virtualFile = createProjectSubFile(it.path.substringAfter(rootDir.path + File.separator), text)
 
                     // Real file with expected testdata allows to throw nicer exceptions in
@@ -347,9 +389,9 @@ abstract class GradleImportingTestCase : ExternalSystemImportingTestCase() {
         }.toList()
     }
 
-    protected fun importProjectFromTestData(): List<VirtualFile> {
+    protected fun importProjectFromTestData(skipIndexing: Boolean? = null): List<VirtualFile> {
         val files = configureByFiles()
-        importProject()
+        importProject(skipIndexing)
         return files
     }
 
@@ -363,13 +405,14 @@ abstract class GradleImportingTestCase : ExternalSystemImportingTestCase() {
         }
             .forEach {
                 if (it.name == GradleConstants.SETTINGS_FILE_NAME && !File(testDataDirectory(), it.name + SUFFIX).exists()) return@forEach
-                val actualText = LoadTextUtil.loadText(it).toString()
+                val actualText = configureKotlinVersionAndProperties(LoadTextUtil.loadText(it).toString())
                 val expectedFileName = if (File(testDataDirectory(), it.name + ".$gradleVersion" + SUFFIX).exists()) {
                     it.name + ".$gradleVersion" + SUFFIX
                 } else {
                     it.name + SUFFIX
                 }
                 KotlinTestUtils.assertEqualsToFile(File(testDataDirectory(), expectedFileName), actualText)
+                { s -> configureKotlinVersionAndProperties(s) }
             }
     }
 

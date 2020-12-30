@@ -40,9 +40,8 @@ import java.io.File
 @CacheableTask
 open class KotlinCompileCommon : AbstractKotlinCompile<K2MetadataCompilerArguments>(), KotlinCommonCompile {
 
-    private val kotlinOptionsImpl = KotlinMultiplatformCommonOptionsImpl()
-    override val kotlinOptions: KotlinMultiplatformCommonOptions
-        get() = kotlinOptionsImpl
+    override val kotlinOptions: KotlinMultiplatformCommonOptions =
+        taskData.compilation.kotlinOptions as KotlinMultiplatformCommonOptionsImpl
 
     override fun createCompilerArgs(): K2MetadataCompilerArguments =
         K2MetadataCompilerArguments()
@@ -65,17 +64,17 @@ open class KotlinCompileCommon : AbstractKotlinCompile<K2MetadataCompilerArgumen
 
         if (defaultsOnly) return
 
-        val classpathList = classpath.files.toMutableList()
+        val classpathList = classpath.files.filter { it.exists() }.toMutableList()
 
         with(args) {
             classpath = classpathList.joinToString(File.pathSeparator)
             destination = destinationDir.canonicalPath
 
-            friendPaths = this@KotlinCompileCommon.friendPaths
+            friendPaths = this@KotlinCompileCommon.friendPaths.files.map { it.absolutePath }.toTypedArray()
             refinesPaths = refinesMetadataPaths.map { it.absolutePath }.toTypedArray()
         }
 
-        kotlinOptionsImpl.updateArguments(args)
+        (kotlinOptions as KotlinMultiplatformCommonOptionsImpl).updateArguments(args)
     }
 
     private fun outputPathsFromMetadataCompilationsOf(sourceSets: Iterable<KotlinSourceSet>): List<File> {
@@ -97,10 +96,10 @@ open class KotlinCompileCommon : AbstractKotlinCompile<K2MetadataCompilerArgumen
     override fun callCompilerAsync(args: K2MetadataCompilerArguments, sourceRoots: SourceRoots, changedFiles: ChangedFiles) {
         val messageCollector = GradlePrintingMessageCollector(logger, args.allWarningsAsErrors)
         val outputItemCollector = OutputItemsCollectorImpl()
-        val compilerRunner = compilerRunner()
+        val compilerRunner = compilerRunner
         val environment = GradleCompilerEnvironment(
             computedCompilerClasspath, messageCollector, outputItemCollector,
-            buildReportMode = buildReportMode,
+            reportingSettings = reportingSettings,
             outputFiles = allOutputFiles()
         )
         compilerRunner.runMetadataCompilerAsync(sourceRoots.kotlinSourceFiles, args, environment)

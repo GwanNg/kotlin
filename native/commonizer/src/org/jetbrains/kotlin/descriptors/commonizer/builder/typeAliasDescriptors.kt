@@ -7,29 +7,43 @@ package org.jetbrains.kotlin.descriptors.commonizer.builder
 
 import org.jetbrains.kotlin.descriptors.ClassifierDescriptorWithTypeParameters
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
-import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.ir.CirClass
-import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.ir.CirTypeAlias
-import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.ir.CirTypeAliasNode
-import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.ir.indexOfCommon
+import org.jetbrains.kotlin.descriptors.annotations.Annotations
+import org.jetbrains.kotlin.descriptors.commonizer.cir.CirClass
+import org.jetbrains.kotlin.descriptors.commonizer.cir.CirClassifier
+import org.jetbrains.kotlin.descriptors.commonizer.cir.CirTypeAlias
+import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.CirTypeAliasNode
+import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.CirNode.Companion.indexOfCommon
 import org.jetbrains.kotlin.descriptors.commonizer.utils.CommonizedGroup
-import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.types.TypeAliasExpander
+import org.jetbrains.kotlin.types.TypeAliasExpansion
 
 internal fun CirTypeAliasNode.buildDescriptors(
     components: GlobalDeclarationsBuilderComponents,
     output: CommonizedGroup<ClassifierDescriptorWithTypeParameters>,
     containingDeclarations: List<DeclarationDescriptor?>
 ) {
-    val commonClass: CirClass? = common()
-    val markAsActual = commonClass != null
+    val commonClassifier: CirClassifier? = commonDeclaration()
+    // Note: 'expect class' and lifted up 'typealias' both can't be non-null
+    val commonTypeAlias: CirTypeAlias? = commonClassifier as? CirTypeAlias?
 
-    target.forEachIndexed { index, typeAlias ->
-        typeAlias?.buildDescriptor(components, output, index, containingDeclarations, fqName, isActual = markAsActual)
+    val isLiftedUp = commonTypeAlias?.isLiftedUp == true
+    val markAsActual = commonClassifier != null
+
+    if (!isLiftedUp) {
+        targetDeclarations.forEachIndexed { index, typeAlias ->
+            typeAlias?.buildDescriptor(components, output, index, containingDeclarations, classId, isActual = markAsActual)
+        }
     }
 
-    commonClass?.buildDescriptor(components, output, indexOfCommon, containingDeclarations, fqName, isExpect = true)
+    if (commonTypeAlias != null) {
+        commonTypeAlias.buildDescriptor(components, output, indexOfCommon, containingDeclarations, classId)
+    } else if (commonClassifier != null && commonClassifier is CirClass) {
+        commonClassifier.buildDescriptor(components, output, indexOfCommon, containingDeclarations, classId, isExpect = true)
+    }
 
     // log stats
-    components.statsCollector?.logStats(output.toList())
+    components.statsCollector?.logStats(output)
 }
 
 private fun CirTypeAlias.buildDescriptor(
@@ -37,7 +51,7 @@ private fun CirTypeAlias.buildDescriptor(
     output: CommonizedGroup<ClassifierDescriptorWithTypeParameters>,
     index: Int,
     containingDeclarations: List<DeclarationDescriptor?>,
-    fqName: FqName,
+    classId: ClassId,
     isActual: Boolean = false
 ) {
     val targetComponents = components.targetComponents[index]
@@ -59,14 +73,25 @@ private fun CirTypeAlias.buildDescriptor(
         typeAliasDescriptor
     )
 
+    val lazyUnderlyingType = storageManager.createLazyValue {
+        underlyingType.buildType(targetComponents, typeParameterResolver, expandTypeAliases = false)
+    }
+
+    val lazyExpandedType = storageManager.createLazyValue {
+        TypeAliasExpander.NON_REPORTING.expandWithoutAbbreviation(
+            TypeAliasExpansion.createWithFormalArguments(typeAliasDescriptor),
+            Annotations.EMPTY
+        )
+    }
+
     typeAliasDescriptor.initialize(
         declaredTypeParameters = declaredTypeParameters,
-        underlyingType = storageManager.createLazyValue { underlyingType.buildType(targetComponents, typeParameterResolver) },
-        expandedType = storageManager.createLazyValue { expandedType.buildType(targetComponents, typeParameterResolver) }
+        underlyingType = lazyUnderlyingType,
+        expandedType = lazyExpandedType
     )
 
     // cache created type alias descriptor:
-    components.cache.cache(fqName, index, typeAliasDescriptor)
+    components.cache.cache(classId, index, typeAliasDescriptor)
 
     output[index] = typeAliasDescriptor
 }

@@ -8,17 +8,24 @@ package org.jetbrains.kotlin.gradle.targets.js.ir
 import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.Project
 import org.gradle.api.Task
+import org.gradle.api.tasks.Copy
+import org.gradle.api.tasks.TaskProvider
+import org.jetbrains.kotlin.gradle.dsl.KotlinJsOptions
 import org.jetbrains.kotlin.gradle.plugin.*
 import org.jetbrains.kotlin.gradle.plugin.AbstractKotlinTargetConfigurator.Companion.runTaskNameSuffix
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation.Companion.MAIN_COMPILATION_NAME
+import org.jetbrains.kotlin.gradle.plugin.mpp.DefaultKotlinUsageContext
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinTargetWithBinaries
+import org.jetbrains.kotlin.gradle.plugin.mpp.disambiguateName
 import org.jetbrains.kotlin.gradle.targets.js.JsAggregatingExecutionSource
 import org.jetbrains.kotlin.gradle.targets.js.KotlinJsReportAggregatingTestRun
+import org.jetbrains.kotlin.gradle.targets.js.KotlinJsTarget
 import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsBrowserDsl
 import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsNodeDsl
 import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsSubTargetContainerDsl
 import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsTargetDsl
-import org.jetbrains.kotlin.gradle.tasks.Kotlin2JsCompile
+import org.jetbrains.kotlin.gradle.targets.js.npm.npmProject
+import org.jetbrains.kotlin.gradle.tasks.registerTask
 import org.jetbrains.kotlin.gradle.utils.lowerCamelCaseName
 import javax.inject.Inject
 
@@ -36,6 +43,12 @@ constructor(
     override lateinit var testRuns: NamedDomainObjectContainer<KotlinJsReportAggregatingTestRun>
         internal set
 
+    open var isMpp: Boolean? = null
+        internal set
+
+    var legacyTarget: KotlinJsTarget? = null
+        internal set
+
     override var moduleName: String? = null
         set(value) {
             check(!isBrowserConfigured && !isNodejsConfigured) {
@@ -43,6 +56,23 @@ constructor(
             }
             field = value
         }
+
+    override fun createUsageContexts(producingCompilation: KotlinCompilation<*>): Set<DefaultKotlinUsageContext> {
+        val usageContexts = super.createUsageContexts(producingCompilation)
+
+        if (isMpp!! || mixedMode) return usageContexts
+
+        return usageContexts +
+                DefaultKotlinUsageContext(
+                    compilation = compilations.getByName(MAIN_COMPILATION_NAME),
+                    usage = project.usageByName("java-api-jars"),
+                    dependencyConfigurationName = commonFakeApiElementsConfigurationName,
+                    overrideConfigurationArtifacts = emptySet()
+                )
+    }
+
+    internal val commonFakeApiElementsConfigurationName: String
+        get() = disambiguateName("commonFakeApiElements")
 
     val disambiguationClassifierInPlatform: String?
         get() = if (mixedMode) {
@@ -70,7 +100,46 @@ constructor(
             }
     }
 
+    private val commonLazy by lazy {
+        compilations.all { compilation ->
+            val npmProject = compilation.npmProject
+            compilation.binaries
+                .withType(JsIrBinary::class.java)
+                .all { binary ->
+                    val syncTask = registerCompileSync(binary)
+
+                    binary.linkTask.configure {
+                        it.kotlinOptions.outputFile = project.buildDir
+                            .resolve(COMPILE_SYNC)
+                            .resolve(npmProject.main)
+                            .canonicalPath
+
+                        it.finalizedBy(syncTask)
+                    }
+                }
+        }
+    }
+
+    private fun registerCompileSync(binary: JsIrBinary): TaskProvider<Copy> {
+        val compilation = binary.compilation
+        val npmProject = compilation.npmProject
+        return project.registerTask(
+            binary.linkSyncTaskName
+        ) { task ->
+            task.from(
+                project.layout.file(binary.linkTask.map { it.destinationDir })
+            )
+
+            task.from(project.tasks.named(compilation.processResourcesTaskName))
+
+            task.into(
+                npmProject.dist
+            )
+        }
+    }
+
     private val browserLazyDelegate = lazy {
+        commonLazy
         project.objects.newInstance(KotlinBrowserJsIr::class.java, this).also {
             it.configureSubTarget()
             browserConfiguredHandlers.forEach { handler ->
@@ -92,6 +161,7 @@ constructor(
     }
 
     private val nodejsLazyDelegate = lazy {
+        commonLazy
         project.objects.newInstance(KotlinNodeJsIr::class.java, this).also {
             it.configureSubTarget()
             nodejsConfiguredHandlers.forEach { handler ->
@@ -136,23 +206,21 @@ constructor(
 
     override fun useCommonJs() {
         compilations.all {
-            it.compileKotlinTask.configureCommonJsOptions()
+            it.kotlinOptions.configureCommonJsOptions()
 
             binaries
                 .withType(JsIrBinary::class.java)
                 .all {
                     it.linkTask.configure { linkTask ->
-                        linkTask.configureCommonJsOptions()
+                        linkTask.kotlinOptions.configureCommonJsOptions()
                     }
                 }
         }
     }
 
-    private fun Kotlin2JsCompile.configureCommonJsOptions() {
-        kotlinOptions {
-            moduleKind = "commonjs"
-            sourceMap = true
-            sourceMapEmbedSources = null
-        }
+    private fun KotlinJsOptions.configureCommonJsOptions() {
+        moduleKind = "commonjs"
+        sourceMap = true
+        sourceMapEmbedSources = null
     }
 }

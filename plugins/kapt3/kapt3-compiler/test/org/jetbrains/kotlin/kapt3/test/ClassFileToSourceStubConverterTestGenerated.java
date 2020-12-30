@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.kapt3.test;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.util.KtTestUtil;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.runner.RunWith;
 
@@ -40,7 +41,7 @@ public class ClassFileToSourceStubConverterTestGenerated extends AbstractClassFi
     }
 
     public void testAllFilesPresentInConverter() throws Exception {
-        KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("plugins/kapt3/kapt3-compiler/testData/converter"), Pattern.compile("^(.+)\\.kt$"), null, true);
+        KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("plugins/kapt3/kapt3-compiler/testData/converter"), Pattern.compile("^(.+)\\.kt$"), null, true);
     }
 
     @TestMetadata("annotationWithFqNames.kt")
@@ -88,6 +89,16 @@ public class ClassFileToSourceStubConverterTestGenerated extends AbstractClassFi
         runTest("plugins/kapt3/kapt3-compiler/testData/converter/defaultImpls.kt");
     }
 
+    @TestMetadata("defaultParameterValueOff.kt")
+    public void testDefaultParameterValueOff() throws Exception {
+        runTest("plugins/kapt3/kapt3-compiler/testData/converter/defaultParameterValueOff.kt");
+    }
+
+    @TestMetadata("defaultParameterValueOn.kt")
+    public void testDefaultParameterValueOn() throws Exception {
+        runTest("plugins/kapt3/kapt3-compiler/testData/converter/defaultParameterValueOn.kt");
+    }
+
     @TestMetadata("deprecated.kt")
     public void testDeprecated() throws Exception {
         runTest("plugins/kapt3/kapt3-compiler/testData/converter/deprecated.kt");
@@ -96,6 +107,11 @@ public class ClassFileToSourceStubConverterTestGenerated extends AbstractClassFi
     @TestMetadata("enumImports.kt")
     public void testEnumImports() throws Exception {
         runTest("plugins/kapt3/kapt3-compiler/testData/converter/enumImports.kt");
+    }
+
+    @TestMetadata("enumInCompanion.kt")
+    public void testEnumInCompanion() throws Exception {
+        runTest("plugins/kapt3/kapt3-compiler/testData/converter/enumInCompanion.kt");
     }
 
     @TestMetadata("enums.kt")
@@ -201,6 +217,26 @@ public class ClassFileToSourceStubConverterTestGenerated extends AbstractClassFi
     @TestMetadata("javadoc.kt")
     public void testJavadoc() throws Exception {
         runTest("plugins/kapt3/kapt3-compiler/testData/converter/javadoc.kt");
+    }
+
+    @TestMetadata("jvmDefaultAll.kt")
+    public void testJvmDefaultAll() throws Exception {
+        runTest("plugins/kapt3/kapt3-compiler/testData/converter/jvmDefaultAll.kt");
+    }
+
+    @TestMetadata("jvmDefaultAllCompatibility.kt")
+    public void testJvmDefaultAllCompatibility() throws Exception {
+        runTest("plugins/kapt3/kapt3-compiler/testData/converter/jvmDefaultAllCompatibility.kt");
+    }
+
+    @TestMetadata("jvmDefaultDisable.kt")
+    public void testJvmDefaultDisable() throws Exception {
+        runTest("plugins/kapt3/kapt3-compiler/testData/converter/jvmDefaultDisable.kt");
+    }
+
+    @TestMetadata("jvmDefaultEnable.kt")
+    public void testJvmDefaultEnable() throws Exception {
+        runTest("plugins/kapt3/kapt3-compiler/testData/converter/jvmDefaultEnable.kt");
     }
 
     @TestMetadata("jvmOverloads.kt")
@@ -406,6 +442,11 @@ public class ClassFileToSourceStubConverterTestGenerated extends AbstractClassFi
     @TestMetadata("strangeNames.kt")
     public void testStrangeNames() throws Exception {
         runTest("plugins/kapt3/kapt3-compiler/testData/converter/strangeNames.kt");
+    }
+
+    @TestMetadata("stripMetadata.kt")
+    public void testStripMetadata() throws Exception {
+        runTest("plugins/kapt3/kapt3-compiler/testData/converter/stripMetadata.kt");
     }
 
     @TestMetadata("suspendErrorTypes.kt")

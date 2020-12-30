@@ -8,8 +8,8 @@ class A {
     constructor() : this(
             {
                 <!UNRESOLVED_REFERENCE!>foo<!>() +
-                this.<!UNRESOLVED_REFERENCE!>foo<!>() +
-                this@A.<!UNRESOLVED_REFERENCE!>foo<!>() +
+                <!INSTANCE_ACCESS_BEFORE_SUPER_CALL!>this<!>.<!UNRESOLVED_REFERENCE!>foo<!>() +
+                <!UNRESOLVED_LABEL!>this@A<!>.<!UNRESOLVED_REFERENCE!>foo<!>() +
                 <!UNRESOLVED_REFERENCE!>foobar<!>()
             })
 }

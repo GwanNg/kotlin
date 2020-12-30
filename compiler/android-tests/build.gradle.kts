@@ -6,42 +6,41 @@ plugins {
 }
 
 dependencies {
-    compile(project(":compiler:util"))
-    compile(project(":compiler:cli"))
-    compile(project(":compiler:frontend"))
-    compile(project(":compiler:backend"))
-    compile(kotlinStdlib())
-    compile(project(":kotlin-reflect"))
-    compile(projectTests(":compiler:tests-common"))
-    compile(commonDep("junit:junit"))
-
-    Platform[193].orLower {
-        compileOnly(intellijDep()) { includeJars("openapi") }
-    }
-
-    testCompile(project(":compiler:incremental-compilation-impl"))
     testCompile(project(":core:descriptors"))
     testCompile(project(":core:descriptors.jvm"))
+    testCompile(project(":compiler:util"))
+    testCompile(project(":compiler:cli"))
+    testCompile(project(":compiler:frontend"))
+    testCompile(project(":compiler:backend"))
+    testCompile(project(":compiler:incremental-compilation-impl"))
     testCompile(project(":compiler:frontend.java"))
+
+    testCompile(kotlinStdlib())
+    testCompile(project(":kotlin-reflect"))
+    testCompile(projectTests(":compiler:tests-common"))
+    testCompile(commonDep("junit:junit"))
+
     testCompile(projectTests(":jps-plugin"))
     testCompile(commonDep("junit:junit"))
+
     Platform[193].orLower {
         testCompile(intellijDep()) { includeJars("openapi", rootProject = rootProject) }
     }
 
-    testCompile(intellijDep()) { includeJars("util", "idea", "idea_rt", "groovy-all", rootProject = rootProject) }
-    Platform[191].orLower {
-        testCompile(intellijDep()) { includeJars("jps-builders") }
+    testCompile(intellijDep()) { includeJars("util", "idea", "idea_rt", rootProject = rootProject) }
+    Platform[202].orHigher {
+        testCompile(intellijDep()) { includeJars("groovy", rootProject = rootProject) }
     }
-    Platform[192].orHigher {
-        testCompile(intellijPluginDep("java")) { includeJars("jps-builders") }
+    Platform[201].orLower {
+        testCompile(intellijDep()) { includeJars("groovy-all", rootProject = rootProject) }
     }
+    testCompile(intellijPluginDep("java")) { includeJars("jps-builders") }
     testCompile(jpsStandalone()) { includeJars("jps-model") }
     testCompile(jpsBuildTest())
 }
 
 sourceSets {
-    "main" { projectDefault() }
+    "main" { }
     "test" { projectDefault() }
 }
 

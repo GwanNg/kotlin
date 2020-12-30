@@ -31,7 +31,7 @@ import org.jetbrains.kotlin.idea.util.application.runWriteAction
 import org.jetbrains.kotlin.idea.util.getProjectJdkTableSafe
 import org.jetbrains.kotlin.platform.TargetPlatform
 import org.jetbrains.kotlin.test.JUnit3WithIdeaConfigurationRunner
-import org.jetbrains.kotlin.test.KotlinTestUtils
+import org.jetbrains.kotlin.test.util.KtTestUtil
 import org.jetbrains.kotlin.test.util.addDependency
 import org.jetbrains.kotlin.test.util.jarRoot
 import org.jetbrains.kotlin.test.util.projectLibrary
@@ -349,10 +349,8 @@ class IdeaModuleInfoTest : ModuleTestCase() {
     fun testSdkForScript() {
         // The first known jdk will be used for scripting if there is no jdk in the project
         runWriteAction {
-            val jdkTable = getProjectJdkTableSafe()
-
-            jdkTable.addJdk(mockJdk6())
-            jdkTable.addJdk(mockJdk9())
+            addJdk(testRootDisposable, ::mockJdk6)
+            addJdk(testRootDisposable, ::mockJdk9)
 
             ProjectRootManager.getInstance(project).projectSdk = null
         }
@@ -366,10 +364,8 @@ class IdeaModuleInfoTest : ModuleTestCase() {
 
     fun testSdkForScriptProjectSdk() {
         runWriteAction {
-            val jdkTable = getProjectJdkTableSafe()
-
-            jdkTable.addJdk(mockJdk6())
-            jdkTable.addJdk(mockJdk9())
+            addJdk(testRootDisposable, ::mockJdk6)
+            addJdk(testRootDisposable, ::mockJdk9)
 
             ProjectRootManager.getInstance(project).projectSdk = mockJdk9()
         }
@@ -383,10 +379,8 @@ class IdeaModuleInfoTest : ModuleTestCase() {
         val a = module("a")
 
         runWriteAction {
-            val jdkTable = getProjectJdkTableSafe()
-
-            jdkTable.addJdk(mockJdk6())
-            jdkTable.addJdk(mockJdk9())
+            addJdk(testRootDisposable, ::mockJdk6)
+            addJdk(testRootDisposable, ::mockJdk9)
 
             ProjectRootManager.getInstance(project).projectSdk = mockJdk6()
             with(ModuleRootManager.getInstance(a).modifiableModel) {
@@ -489,13 +483,11 @@ class IdeaModuleInfoTest : ModuleTestCase() {
     override fun setUp() {
         super.setUp()
 
-        VfsRootAccess.allowRootAccess(KotlinTestUtils.getHomeDirectory())
+        VfsRootAccess.allowRootAccess(KtTestUtil.getHomeDirectory())
     }
 
     override fun tearDown() {
-        clearSdkTable(testRootDisposable)
-
-        VfsRootAccess.disallowRootAccess(KotlinTestUtils.getHomeDirectory())
+        VfsRootAccess.disallowRootAccess(KtTestUtil.getHomeDirectory())
 
         super.tearDown()
     }

@@ -3,15 +3,6 @@
 // SKIP_TXT
 
 /*
- * KOTLIN DIAGNOSTICS NOT LINKED SPEC TEST (NEGATIVE)
- *
- * SECTIONS: dfa
- * NUMBER: 43
- * DESCRIPTION: Raw data flow analysis test
- * HELPERS: classes, objects, typealiases, functions, enumClasses, interfaces, sealedClasses
- */
-
-/*
  * TESTCASE NUMBER: 1
  * ISSUES: KT-10461
  */
@@ -23,7 +14,7 @@ fun case_1(x: Double?, y: Double?) : Double {
     } else if (x == null && y != null) {
         y
     } else {
-        x <!AMBIGUITY!>+<!> y
+        x <!NONE_APPLICABLE!>+<!> y
     }
 }
 

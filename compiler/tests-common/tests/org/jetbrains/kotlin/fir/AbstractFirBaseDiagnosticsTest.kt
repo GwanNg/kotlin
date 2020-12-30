@@ -5,7 +5,6 @@
 
 package org.jetbrains.kotlin.fir
 
-import com.intellij.openapi.extensions.Extensions
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementFinder
@@ -21,18 +20,18 @@ import org.jetbrains.kotlin.checkers.diagnostics.TextDiagnostic
 import org.jetbrains.kotlin.checkers.utils.CheckerTestUtil
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.cli.jvm.compiler.TopDownAnalyzerFacadeForJVM
+import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.diagnostics.PsiDiagnosticUtils
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnostic
-import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
-import org.jetbrains.kotlin.fir.analysis.diagnostics.FirPsiDiagnostic
 import org.jetbrains.kotlin.fir.builder.RawFirBuilder
+import org.jetbrains.kotlin.fir.builder.RawFirBuilderMode
 import org.jetbrains.kotlin.fir.declarations.FirFile
-import org.jetbrains.kotlin.fir.java.FirJavaModuleBasedSession
-import org.jetbrains.kotlin.fir.java.FirLibrarySession
+import org.jetbrains.kotlin.fir.extensions.BunchOfRegisteredExtensions
 import org.jetbrains.kotlin.fir.java.FirProjectSessionProvider
 import org.jetbrains.kotlin.fir.lightTree.LightTree2Fir
 import org.jetbrains.kotlin.fir.resolve.firProvider
-import org.jetbrains.kotlin.fir.resolve.impl.FirProviderImpl
+import org.jetbrains.kotlin.fir.resolve.providers.impl.FirProviderImpl
+import org.jetbrains.kotlin.fir.session.FirSessionFactory
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.platform.TargetPlatform
@@ -58,10 +57,11 @@ abstract class AbstractFirBaseDiagnosticsTest : BaseDiagnosticsTest() {
     protected open val useLightTree: Boolean
         get() = false
 
+    protected open val useLazyBodiesModeForRawFir: Boolean
+        get() = false
+
     override fun setupEnvironment(environment: KotlinCoreEnvironment) {
-        Extensions.getArea(environment.project)
-            .getExtensionPoint(PsiElementFinder.EP_NAME)
-            .unregisterExtension(JavaElementFinder::class.java)
+        PsiElementFinder.EP.getPoint(environment.project).unregisterExtension(JavaElementFinder::class.java)
     }
 
     open fun analyzeAndCheckUnhandled(testDataFile: File, files: List<TestFile>, useLightTree: Boolean = false) {
@@ -69,11 +69,12 @@ abstract class AbstractFirBaseDiagnosticsTest : BaseDiagnosticsTest() {
 
         val modules = createModules(groupedByModule)
 
-        val sessionProvider = FirProjectSessionProvider(project)
+        val sessionProvider = FirProjectSessionProvider()
 
         //For BuiltIns, registered in sessionProvider automatically
         val allProjectScope = GlobalSearchScope.allScope(project)
-        FirLibrarySession.create(
+
+        FirSessionFactory.createLibrarySession(
             builtInsModuleInfo, sessionProvider, allProjectScope, project,
             environment.createPackagePartProvider(allProjectScope)
         )
@@ -83,7 +84,12 @@ abstract class AbstractFirBaseDiagnosticsTest : BaseDiagnosticsTest() {
             val scope = TopDownAnalyzerFacadeForJVM.newModuleSearchScope(
                 project,
                 moduleFiles.mapNotNull { it.ktFile })
-            FirJavaModuleBasedSession(info, sessionProvider, scope)
+            FirSessionFactory.createJavaModuleBasedSession(info, sessionProvider, scope, project) {
+                configureSession()
+                getFirExtensions()?.let {
+                    registerExtensions(it)
+                }
+            }
         }
 
         val firFilesPerSession = mutableMapOf<FirSession, List<FirFile>>()
@@ -102,6 +108,10 @@ abstract class AbstractFirBaseDiagnosticsTest : BaseDiagnosticsTest() {
         runAnalysis(testDataFile, files, firFilesPerSession)
     }
 
+    protected open fun getFirExtensions(): BunchOfRegisteredExtensions? {
+        return null
+    }
+
     private fun mapKtFilesToFirFiles(session: FirSession, ktFiles: List<KtFile>, firFiles: MutableList<FirFile>, useLightTree: Boolean) {
         val firProvider = (session.firProvider as FirProviderImpl)
         if (useLightTree) {
@@ -112,7 +122,11 @@ abstract class AbstractFirBaseDiagnosticsTest : BaseDiagnosticsTest() {
                 firFile
             }
         } else {
-            val firBuilder = RawFirBuilder(session, firProvider.kotlinScopeProvider, false)
+            val firBuilder = RawFirBuilder(
+                session,
+                firProvider.kotlinScopeProvider,
+                RawFirBuilderMode.lazyBodies(useLazyBodiesModeForRawFir)
+            )
             ktFiles.mapTo(firFiles) {
                 val firFile = firBuilder.buildFirFile(it)
                 firProvider.recordFile(firFile)
@@ -145,7 +159,7 @@ abstract class AbstractFirBaseDiagnosticsTest : BaseDiagnosticsTest() {
             val dependencies = ArrayList<ModuleInfo>()
             dependencies.add(module)
             for (dependency in testModule.dependencies) {
-                dependencies.add(modules[dependency]!!)
+                dependencies.add(modules[dependency as TestModule?]!!)
             }
 
 
@@ -311,13 +325,14 @@ abstract class AbstractFirBaseDiagnosticsTest : BaseDiagnosticsTest() {
 
     private fun Iterable<FirDiagnostic<*>>.toActualDiagnostic(root: PsiElement): List<ActualDiagnostic> {
         val result = mutableListOf<ActualDiagnostic>()
-        mapTo(result) {
-            val oldDiagnostic = (it as FirPsiDiagnostic<*>).asPsiBasedDiagnostic()
-            ActualDiagnostic(oldDiagnostic, null, true)
+        filterIsInstance<Diagnostic>().mapTo(result) {
+            ActualDiagnostic(it, null, true)
         }
         for (errorElement in AnalyzingUtils.getSyntaxErrorRanges(root)) {
             result.add(ActualDiagnostic(SyntaxErrorDiagnostic(errorElement), null, true))
         }
         return result
     }
+
+    protected open fun FirSessionFactory.FirSessionConfigurator.configureSession() {}
 }

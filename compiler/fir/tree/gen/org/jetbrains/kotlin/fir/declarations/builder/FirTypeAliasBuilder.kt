@@ -10,6 +10,8 @@ import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.FirSourceElement
 import org.jetbrains.kotlin.fir.builder.FirAnnotationContainerBuilder
 import org.jetbrains.kotlin.fir.builder.FirBuilderDsl
+import org.jetbrains.kotlin.fir.declarations.FirDeclarationAttributes
+import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
 import org.jetbrains.kotlin.fir.declarations.FirDeclarationStatus
 import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
 import org.jetbrains.kotlin.fir.declarations.FirTypeAlias
@@ -32,6 +34,8 @@ class FirTypeAliasBuilder : FirTypeParametersOwnerBuilder, FirAnnotationContaine
     override var source: FirSourceElement? = null
     lateinit var session: FirSession
     var resolvePhase: FirResolvePhase = FirResolvePhase.RAW_FIR
+    lateinit var origin: FirDeclarationOrigin
+    var attributes: FirDeclarationAttributes = FirDeclarationAttributes()
     lateinit var status: FirDeclarationStatus
     override val typeParameters: MutableList<FirTypeParameter> = mutableListOf()
     lateinit var name: Name
@@ -44,6 +48,8 @@ class FirTypeAliasBuilder : FirTypeParametersOwnerBuilder, FirAnnotationContaine
             source,
             session,
             resolvePhase,
+            origin,
+            attributes,
             status,
             typeParameters,
             name,

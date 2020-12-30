@@ -10,6 +10,8 @@ import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.FirSourceElement
 import org.jetbrains.kotlin.fir.builder.FirAnnotationContainerBuilder
 import org.jetbrains.kotlin.fir.builder.FirBuilderDsl
+import org.jetbrains.kotlin.fir.declarations.FirDeclarationAttributes
+import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
 import org.jetbrains.kotlin.fir.declarations.FirDeclarationStatus
 import org.jetbrains.kotlin.fir.declarations.FirField
 import org.jetbrains.kotlin.fir.declarations.FirPropertyAccessor
@@ -20,6 +22,7 @@ import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.symbols.impl.FirDelegateFieldSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirVariableSymbol
+import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.FirTypeRef
 import org.jetbrains.kotlin.fir.visitors.*
 import org.jetbrains.kotlin.name.Name
@@ -35,6 +38,8 @@ open class FirFieldBuilder : FirAnnotationContainerBuilder {
     override var source: FirSourceElement? = null
     open lateinit var session: FirSession
     open var resolvePhase: FirResolvePhase = FirResolvePhase.RAW_FIR
+    open lateinit var origin: FirDeclarationOrigin
+    open var attributes: FirDeclarationAttributes = FirDeclarationAttributes()
     open lateinit var returnTypeRef: FirTypeRef
     open lateinit var name: Name
     open lateinit var symbol: FirVariableSymbol<FirField>
@@ -43,12 +48,15 @@ open class FirFieldBuilder : FirAnnotationContainerBuilder {
     open val typeParameters: MutableList<FirTypeParameter> = mutableListOf()
     open lateinit var status: FirDeclarationStatus
     open var containerSource: DeserializedContainerSource? = null
+    open var dispatchReceiverType: ConeKotlinType? = null
 
     override fun build(): FirField {
         return FirFieldImpl(
             source,
             session,
             resolvePhase,
+            origin,
+            attributes,
             returnTypeRef,
             name,
             symbol,
@@ -57,6 +65,7 @@ open class FirFieldBuilder : FirAnnotationContainerBuilder {
             typeParameters,
             status,
             containerSource,
+            dispatchReceiverType,
         )
     }
 

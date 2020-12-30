@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.idea.codeInsight;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.util.KtTestUtil;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.runner.RunWith;
 
@@ -25,7 +26,7 @@ public class OutOfBlockModificationTestGenerated extends AbstractOutOfBlockModif
     }
 
     public void testAllFilesPresentInOutOfBlock() throws Exception {
-        KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/codeInsight/outOfBlock"), Pattern.compile("^(.+)\\.(kt|kts)$"), null, true);
+        KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("idea/testData/codeInsight/outOfBlock"), Pattern.compile("^(.+)\\.(kt|kts)$"), null, true);
     }
 
     @TestMetadata("Comment.kt")
@@ -116,6 +117,11 @@ public class OutOfBlockModificationTestGenerated extends AbstractOutOfBlockModif
     @TestMetadata("InClassPropertyInitializer.kt")
     public void testInClassPropertyInitializer() throws Exception {
         runTest("idea/testData/codeInsight/outOfBlock/InClassPropertyInitializer.kt");
+    }
+
+    @TestMetadata("InClassPropertyInitializer2.kt")
+    public void testInClassPropertyInitializer2() throws Exception {
+        runTest("idea/testData/codeInsight/outOfBlock/InClassPropertyInitializer2.kt");
     }
 
     @TestMetadata("InClassPropertyInitializerWithoutInference.kt")

@@ -3,6 +3,8 @@
  * that can be found in the license/LICENSE.txt file.
  */
 
+@file:OptIn(ExperimentalPathApi::class)
+
 package org.jetbrains.kotlin.daemon.experimental.integration
 
 import junit.framework.TestCase
@@ -26,7 +28,7 @@ import org.jetbrains.kotlin.daemon.common.experimental.findCallbackServerSocket
 import org.jetbrains.kotlin.integration.KotlinIntegrationTestBase
 import org.jetbrains.kotlin.progress.experimental.CompilationCanceledStatus
 import org.jetbrains.kotlin.test.IgnoreAll
-import org.jetbrains.kotlin.test.KotlinTestUtils
+import org.jetbrains.kotlin.test.util.KtTestUtil
 import org.jetbrains.kotlin.utils.KotlinPaths
 import org.junit.runner.RunWith
 import java.io.ByteArrayOutputStream
@@ -38,6 +40,7 @@ import java.net.URL
 import java.net.URLClassLoader
 import java.nio.channels.ClosedChannelException
 import java.nio.charset.Charset
+import java.nio.file.Path
 import java.rmi.ConnectException
 import java.rmi.ConnectIOException
 import java.rmi.UnmarshalException
@@ -46,6 +49,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.logging.LogManager
 import kotlin.concurrent.thread
+import kotlin.io.path.*
 import kotlin.script.dependencies.Environment
 import kotlin.script.dependencies.ScriptContents
 import kotlin.script.experimental.dependencies.DependenciesResolver
@@ -64,7 +68,7 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
 
     val kotlinCompilerClientInstance = KotlinCompilerDaemonClient.instantiate(DaemonProtocolVariant.SOCKETS)
 
-    private fun createNewLogFile(): File {
+    private fun createNewLogFile(): Path {
         println("creating logFile")
         val newLogFile = createTempFile("kotlin-daemon-experimental-test.", ".log")
         println("logFile created (${newLogFile.loggerCompatiblePath})")
@@ -97,9 +101,8 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
     )
 
     val daemonClientClassPath = listOf(
-        File(KotlinIntegrationTestBase.getCompilerLib(), "kotlin-daemon-client-new.jar"),
-        File(KotlinIntegrationTestBase.getCompilerLib(), "kotlin-compiler.jar"),
-        File(KotlinIntegrationTestBase.getCompilerLib(), "ktor-network-1.0.1.jar")
+        File(KotlinIntegrationTestBase.getCompilerLib(), "kotlin-daemon-client.jar"),
+        File(KotlinIntegrationTestBase.getCompilerLib(), "kotlin-compiler.jar")
     )
 
     val compilerId by lazy(LazyThreadSafetyMode.NONE) { CompilerId.makeCompilerId(compilerClassPath) }
@@ -154,8 +157,8 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
         }
     }
 
-    private fun getTestBaseDir(): String = KotlinTestUtils.getTestDataPathBase() + "/integration/smoke/" + getTestName(true)
-    private fun getHelloAppBaseDir(): String = KotlinTestUtils.getTestDataPathBase() + "/integration/smoke/helloApp"
+    private fun getTestBaseDir(): String = KtTestUtil.getTestDataPathBase() + "/integration/smoke/" + getTestName(true)
+    private fun getHelloAppBaseDir(): String = KtTestUtil.getTestDataPathBase() + "/integration/smoke/helloApp"
 
     private fun run(logName: String, vararg args: String): Int = runJava(getTestBaseDir(), logName, *args)
 
@@ -245,7 +248,7 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
                 configureDaemonJVMOptions(inheritMemoryLimits = false, inheritAdditionalProperties = false, inheritOtherJvmOptions = false)
             assertEquals("300m", opts2.maxMemory)
             assertEquals(-1, DaemonJVMOptionsMemoryComparator().compare(opts, opts2))
-            assertEquals("300m", listOf(opts, opts2).maxWith(DaemonJVMOptionsMemoryComparator())?.maxMemory)
+            assertEquals("300m", listOf(opts, opts2).maxWithOrNull(DaemonJVMOptionsMemoryComparator())?.maxMemory)
 
             val myXmxParam = ManagementFactory.getRuntimeMXBean().inputArguments.first { it.startsWith("-Xmx") }
             TestCase.assertNotNull(myXmxParam)
@@ -596,8 +599,8 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
                 shutdownDelayMilliseconds = 1,
                 runFilesPath = File(tmpdir, getTestName(true)).absolutePath
             )
-            val clientFlag = createTempFile(getTestName(true), "-client.alive")
-            val sessionFlag = createTempFile(getTestName(true), "-session.alive")
+            val clientFlag = createTempFile(getTestName(true), "-client.alive").toFile()
+            val sessionFlag = createTempFile(getTestName(true), "-session.alive").toFile()
             try {
                 withLogFile("kotlin-daemon-test") { logFile ->
                     val daemonJVMOptions = makeTestDaemonJvmOptions(logFile)
@@ -636,8 +639,8 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
                 shutdownDelayMilliseconds = 1,
                 runFilesPath = File(tmpdir, getTestName(true)).absolutePath
             )
-            val clientFlag = createTempFile(getTestName(true), "-client.alive")
-            val sessionFlag = createTempFile(getTestName(true), "-session.alive")
+            val clientFlag = createTempFile(getTestName(true), "-client.alive").toFile()
+            val sessionFlag = createTempFile(getTestName(true), "-session.alive").toFile()
             try {
                 withLogFile("kotlin-daemon-test") { logFile ->
                     val daemonJVMOptions = makeTestDaemonJvmOptions(logFile)
@@ -679,8 +682,8 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
                 shutdownDelayMilliseconds = 3000,
                 runFilesPath = File(tmpdir, getTestName(true)).absolutePath
             )
-            val clientFlag = createTempFile(getTestName(true), "-client.alive")
-            val clientFlag2 = createTempFile(getTestName(true), "-client.alive")
+            val clientFlag = createTempFile(getTestName(true), "-client.alive").toFile()
+            val clientFlag2 = createTempFile(getTestName(true), "-client.alive").toFile()
             try {
                 withLogFile("kotlin-daemon-test") { logFile ->
                     val daemonJVMOptions = makeTestDaemonJvmOptions(logFile)
@@ -770,8 +773,7 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
             assertEquals("Compilation failed:\n$resOutput", 0, resCode)
             println("OK")
         } finally {
-            if (clientAliveFile.exists())
-                clientAliveFile.delete()
+            clientAliveFile.deleteIfExists()
         }
     }
 
@@ -981,13 +983,13 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
                             else -> "?"
                         }
                         val compiledPort: Int? = daemonInfo.trim().split(" ").last().toIntOrNull()
-                        appendln("#$i\tcompiled on $daemonInfo, session ${daemonInfos[i]?.second}, result ${resultCodes[i]}; started daemon on port ${port2logs[i]?.first}, log: ${logFiles[i]?.canonicalPath}")
+                        appendLine("#$i\tcompiled on $daemonInfo, session ${daemonInfos[i]?.second}, result ${resultCodes[i]}; started daemon on port ${port2logs[i]?.first}, log: ${logFiles[i]?.canonicalPath}")
                         if (resultCodes[i] != 0 || electionLogs[i] == null) {
-                            appendln("--- out $i, result ${resultCodes[i]}:\n${outStreams[i].toByteArray().toString(Charset.defaultCharset())}\n---")
+                            appendLine("--- out $i, result ${resultCodes[i]}:\n${outStreams[i].toByteArray().toString(Charset.defaultCharset())}\n---")
                             compiledPort?.let { port -> port2logs.find { it?.first == port } }?.second?.let { logFile ->
-                                appendln("--- log file ${logFile.name}:\n${logFile.readText()}\n---")
+                                appendLine("--- log file ${logFile.name}:\n${logFile.readText()}\n---")
                             }
-                                ?: appendln("--- log not found (port: $compiledPort)")
+                                ?: appendLine("--- log not found (port: $compiledPort)")
                         }
                     }
                 }
@@ -1372,20 +1374,20 @@ internal fun generateLargeKotlinFile(size: Int): String {
     return buildString {
         append("package large\n\n")
         (0..size).forEach {
-            appendln("class Class$it")
-            appendln("{")
-            appendln("\tfun foo(): Long = $it")
-            appendln("}")
-            appendln("\n")
+            appendLine("class Class$it")
+            appendLine("{")
+            appendLine("\tfun foo(): Long = $it")
+            appendLine("}")
+            appendLine("\n")
             repeat(2000) {
-                appendln("// kotlin rules ... and stuff")
+                appendLine("// kotlin rules ... and stuff")
             }
         }
-        appendln("fun main(args: Array<String>)")
-        appendln("{")
-        appendln("\tval result = Class5().foo() + Class$size().foo()")
-        appendln("\tprintln(result)")
-        appendln("}")
+        appendLine("fun main(args: Array<String>)")
+        appendLine("{")
+        appendLine("\tval result = Class5().foo() + Class$size().foo()")
+        appendLine("\tprintln(result)")
+        appendLine("}")
     }
 
 }
@@ -1428,7 +1430,7 @@ fun restoreSystemProperty(propertyName: String, backupValue: String?) {
 }
 
 internal inline fun withFlagFile(prefix: String, suffix: String? = null, body: (File) -> Unit) {
-    val file = createTempFile(prefix, suffix)
+    val file = createTempFile(prefix, suffix).toFile()
     try {
         body(file)
     } finally {
@@ -1437,7 +1439,7 @@ internal inline fun withFlagFile(prefix: String, suffix: String? = null, body: (
 }
 
 internal inline fun withLogFile(prefix: String, suffix: String = ".log", printLogOnException: Boolean = true, body: (File) -> Unit) {
-    val logFile = createTempFile(prefix, suffix)
+    val logFile = createTempFile(prefix, suffix).toFile()
     println("LOG FILE : ${logFile.path}")
     try {
         body(logFile)
@@ -1450,13 +1452,6 @@ internal inline fun withLogFile(prefix: String, suffix: String = ".log", printLo
     }
 }
 
-// java.util.Logger used in the daemon silently forgets to log into a file specified in the config on Windows,
-// if file path is given in windows form (using backslash as a separator); the reason is unknown
-// this function makes a path with forward slashed, that works on windows too
-internal val File.loggerCompatiblePath: String
-    get() =
-        if (OSKind.current == OSKind.Windows) absolutePath.replace('\\', '/')
-        else absolutePath
 
 open class TestKotlinScriptDummyDependenciesResolver : DependenciesResolver {
 

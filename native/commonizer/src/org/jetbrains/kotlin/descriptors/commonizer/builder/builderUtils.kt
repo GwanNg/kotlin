@@ -7,13 +7,11 @@ package org.jetbrains.kotlin.descriptors.commonizer.builder
 
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
-import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.ir.*
-import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.ir.CirSimpleTypeKind.Companion.areCompatible
-import org.jetbrains.kotlin.descriptors.commonizer.utils.isUnderStandardKotlinPackages
-import org.jetbrains.kotlin.descriptors.commonizer.utils.resolveClassOrTypeAliasByFqName
+import org.jetbrains.kotlin.descriptors.commonizer.cir.*
+import org.jetbrains.kotlin.descriptors.commonizer.utils.compact
+import org.jetbrains.kotlin.descriptors.commonizer.utils.compactMap
+import org.jetbrains.kotlin.descriptors.commonizer.utils.compactMapIndexed
 import org.jetbrains.kotlin.descriptors.impl.ValueParameterDescriptorImpl
-import org.jetbrains.kotlin.incremental.components.NoLookupLocation
-import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.resolve.DescriptorFactory
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.types.*
@@ -26,10 +24,9 @@ internal fun List<CirTypeParameter>.buildDescriptorsAndTypeParameterResolver(
     containingDeclaration: DeclarationDescriptor,
     typeParametersIndexOffset: Int = 0
 ): Pair<List<TypeParameterDescriptor>, TypeParameterResolver> {
-    val ownTypeParameters = mutableListOf<TypeParameterDescriptor>()
+    val ownTypeParameters = ArrayList<TypeParameterDescriptor>(size)
 
     val typeParameterResolver = TypeParameterResolverImpl(
-        storageManager = targetComponents.storageManager,
         ownTypeParameters = ownTypeParameters,
         parent = parentTypeParameterResolver
     )
@@ -51,12 +48,11 @@ internal fun List<CirTypeParameter>.buildDescriptorsAndTypeParameterResolver(
     return ownTypeParameters to typeParameterResolver
 }
 
-
 internal fun List<CirValueParameter>.buildDescriptors(
     targetComponents: TargetDeclarationsBuilderComponents,
     typeParameterResolver: TypeParameterResolver,
     containingDeclaration: CallableDescriptor
-): List<ValueParameterDescriptor> = mapIndexed { index, param ->
+): List<ValueParameterDescriptor> = compactMapIndexed { index, param ->
     ValueParameterDescriptorImpl(
         containingDeclaration,
         null,
@@ -73,10 +69,7 @@ internal fun List<CirValueParameter>.buildDescriptors(
 }
 
 internal fun List<CirAnnotation>.buildDescriptors(targetComponents: TargetDeclarationsBuilderComponents): Annotations =
-    if (isEmpty())
-        Annotations.EMPTY
-    else
-        Annotations.create(map { CommonizedAnnotationDescriptor(targetComponents, it) })
+    Annotations.create(compactMap { CommonizedAnnotationDescriptor(targetComponents, it) })
 
 internal fun CirExtensionReceiver.buildExtensionReceiver(
     targetComponents: TargetDeclarationsBuilderComponents,
@@ -93,95 +86,113 @@ internal fun buildDispatchReceiver(callableDescriptor: CallableDescriptor) =
 
 internal fun CirType.buildType(
     targetComponents: TargetDeclarationsBuilderComponents,
-    typeParameterResolver: TypeParameterResolver
+    typeParameterResolver: TypeParameterResolver,
+    expandTypeAliases: Boolean = true
 ): UnwrappedType = when (this) {
-    is CirSimpleType -> buildType(targetComponents, typeParameterResolver)
+    is CirSimpleType -> buildType(targetComponents, typeParameterResolver, expandTypeAliases)
     is CirFlexibleType -> flexibleType(
-        lowerBound = lowerBound.buildType(targetComponents, typeParameterResolver),
-        upperBound = upperBound.buildType(targetComponents, typeParameterResolver)
+        lowerBound = lowerBound.buildType(targetComponents, typeParameterResolver, expandTypeAliases),
+        upperBound = upperBound.buildType(targetComponents, typeParameterResolver, expandTypeAliases)
     )
 }
 
 internal fun CirSimpleType.buildType(
     targetComponents: TargetDeclarationsBuilderComponents,
-    typeParameterResolver: TypeParameterResolver
-): SimpleType {
-    val classifier: ClassifierDescriptor = when (kind) {
+    typeParameterResolver: TypeParameterResolver,
+    expandTypeAliases: Boolean
+): SimpleType = when (this) {
+    is CirClassType -> buildSimpleType(
+        classifier = targetComponents.findClassOrTypeAlias(classifierId).checkClassifierType<ClassDescriptor>(),
+        arguments = collectArguments(targetComponents, typeParameterResolver, expandTypeAliases),
+        isMarkedNullable = isMarkedNullable
+    )
+    is CirTypeAliasType -> {
+        val typeAliasDescriptor = targetComponents.findClassOrTypeAlias(classifierId).checkClassifierType<TypeAliasDescriptor>()
+        val arguments = this.arguments.compactMap { it.buildArgument(targetComponents, typeParameterResolver, expandTypeAliases) }
 
-        CirSimpleTypeKind.TYPE_PARAMETER -> {
-            typeParameterResolver.resolve(fqName.shortName())
-                ?: error("Type parameter $fqName not found in ${typeParameterResolver::class.java}, $typeParameterResolver")
-        }
-
-        CirSimpleTypeKind.CLASS, CirSimpleTypeKind.TYPE_ALIAS -> {
-            val classOrTypeAlias = findClassOrTypeAlias(targetComponents, fqName)
-            checkClassifier(classOrTypeAlias, kind, fqName.isUnderStandardKotlinPackages || !targetComponents.isCommon)
-            classOrTypeAlias
-        }
+        if (expandTypeAliases)
+            buildExpandedType(typeAliasDescriptor, arguments, isMarkedNullable)
+        else
+            buildSimpleType(typeAliasDescriptor, arguments, isMarkedNullable)
     }
+    is CirTypeParameterType -> buildSimpleType(
+        classifier = typeParameterResolver.resolve(index)
+            ?: error("Type parameter with index=$index not found in ${typeParameterResolver::class.java}, $typeParameterResolver for ${targetComponents.target}"),
+        arguments = emptyList(),
+        isMarkedNullable = isMarkedNullable
+    )
+}
 
-    // TODO: commonize annotations, KT-34234
-    val typeAnnotations = if (!targetComponents.isCommon) annotations.buildDescriptors(targetComponents) else Annotations.EMPTY
+private fun buildSimpleType(classifier: ClassifierDescriptor, arguments: List<TypeProjection>, isMarkedNullable: Boolean): SimpleType {
+    val reorderedArguments = if (arguments.isNotEmpty() && classifier is ClassDescriptor && classifier.isInner) {
+        val totalArguments = arguments.size
+        var remainingArguments = totalArguments
 
-    val simpleType = simpleType(
-        annotations = typeAnnotations,
+        ArrayList<TypeProjection>(totalArguments).also { reorderedArguments ->
+            var currentClassifier: ClassDescriptor = classifier
+
+            while (true) {
+                val argumentsForCurrentClassifier = currentClassifier.declaredTypeParameters.size
+                for (i in 0 until argumentsForCurrentClassifier) {
+                    reorderedArguments += arguments[remainingArguments - argumentsForCurrentClassifier + i]
+                }
+                remainingArguments -= argumentsForCurrentClassifier
+
+                if (remainingArguments == 0) break
+                currentClassifier = currentClassifier.containingDeclaration as ClassDescriptor
+            }
+        }
+    } else arguments
+
+    return simpleType(
+        annotations = Annotations.EMPTY,
         constructor = classifier.typeConstructor,
-        arguments = arguments.map { it.buildArgument(targetComponents, typeParameterResolver) },
+        arguments = reorderedArguments,
         nullable = isMarkedNullable,
         kotlinTypeRefiner = null
     )
-
-    val computedType = if (classifier is TypeAliasDescriptor)
-        classifier.underlyingType.withAbbreviation(simpleType)
-    else
-        simpleType
-
-    return if (isDefinitelyNotNullType)
-        computedType.makeSimpleTypeDefinitelyNotNullOrNotNull()
-    else
-        computedType
 }
 
-internal fun findClassOrTypeAlias(
+private fun buildExpandedType(classifier: TypeAliasDescriptor, arguments: List<TypeProjection>, isMarkedNullable: Boolean): SimpleType {
+    return TypeAliasExpander.NON_REPORTING.expand(
+        TypeAliasExpansion.create(null, classifier, arguments),
+        Annotations.EMPTY
+    ).makeNullableAsSpecified(isMarkedNullable)
+}
+
+
+private inline fun <reified T : ClassifierDescriptorWithTypeParameters> ClassifierDescriptorWithTypeParameters.checkClassifierType(): T {
+    check(this is T) { "Mismatched classifier kinds.\nFound: ${this::class.java}, $this\nShould be: ${T::class.java}" }
+    return this
+}
+
+private fun CirClassType.collectArguments(
     targetComponents: TargetDeclarationsBuilderComponents,
-    fqName: FqName
-): ClassifierDescriptorWithTypeParameters = when {
-    fqName.isUnderStandardKotlinPackages -> {
-        // look up for classifier in built-ins module:
-        val builtInsModule = targetComponents.builtIns.builtInsModule
-
-        // TODO: this works fine for Native as far as built-ins module contains full Native stdlib, but this is not enough for JVM and JS
-        builtInsModule.resolveClassOrTypeAliasByFqName(fqName, NoLookupLocation.FOR_ALREADY_TRACKED)
-            ?: error("Classifier $fqName not found in built-ins module $builtInsModule")
-    }
-
-    else -> {
-        // otherwise, find the appropriate user classifier:
-        targetComponents.findAppropriateClassOrTypeAlias(fqName)
-            ?: error("Classifier $fqName not found in created descriptors cache")
-    }
-}
-
-private fun checkClassifier(classifier: ClassifierDescriptor, kind: CirSimpleTypeKind, strict: Boolean) {
-    val classifierKind = CirSimpleTypeKind.determineKind(classifier)
-
-    if (strict) {
-        check(kind == classifierKind) {
-            "Mismatched classifier kinds.\nFound: $classifierKind, ${classifier::class.java}, $classifier\nShould be: $kind"
-        }
+    typeParameterResolver: TypeParameterResolver,
+    expandTypeAliases: Boolean
+): List<TypeProjection> {
+    return if (outerType == null) {
+        arguments.compactMap { it.buildArgument(targetComponents, typeParameterResolver, expandTypeAliases) }
     } else {
-        check(areCompatible(classifierKind, kind)) {
-            "Incompatible classifier kinds.\nExpect: $classifierKind, ${classifier::class.java}, $classifier\nActual: $kind"
+        val allTypes = generateSequence(this) { it.outerType }.toList()
+        val arguments = mutableListOf<TypeProjection>()
+
+        for (index in allTypes.size - 1 downTo 0) {
+            allTypes[index].arguments.mapTo(arguments) { it.buildArgument(targetComponents, typeParameterResolver, expandTypeAliases) }
         }
+
+        arguments.compact()
     }
 }
 
 private fun CirTypeProjection.buildArgument(
     targetComponents: TargetDeclarationsBuilderComponents,
-    typeParameterResolver: TypeParameterResolver
-): TypeProjection =
-    if (isStarProjection) {
-        StarProjectionForAbsentTypeParameter(targetComponents.builtIns)
-    } else {
-        TypeProjectionImpl(projectionKind, type.buildType(targetComponents, typeParameterResolver))
-    }
+    typeParameterResolver: TypeParameterResolver,
+    expandTypeAliases: Boolean
+): TypeProjection = when (this) {
+    is CirStarTypeProjection -> StarProjectionForAbsentTypeParameter(targetComponents.builtIns)
+    is CirTypeProjectionImpl -> TypeProjectionImpl(
+        projectionKind,
+        type.buildType(targetComponents, typeParameterResolver, expandTypeAliases)
+    )
+}

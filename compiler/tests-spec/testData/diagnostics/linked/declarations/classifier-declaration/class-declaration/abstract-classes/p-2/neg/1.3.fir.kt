@@ -2,15 +2,6 @@
 // !DIAGNOSTICS: -UNUSED_VARIABLE -ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE -UNUSED_VALUE -UNUSED_PARAMETER -UNUSED_EXPRESSION
 // SKIP_TXT
 
-/*
- * KOTLIN DIAGNOSTICS SPEC TEST (NEGATIVE)
- *
- * SPEC VERSION: 0.1-213
- * PLACE: declarations, classifier-declaration, class-declaration, abstract-classes -> paragraph 2 -> sentence 1
- * NUMBER: 3
- * DESCRIPTION: attempt to implement abstract members with invalid types
- */
-
 // TESTCASE NUMBER: 1
 abstract class Base {
     abstract val a: CharSequence
@@ -20,12 +11,12 @@ abstract class Base {
 }
 
 class Case1 : Base() {
-    override fun foo(): Any
+    override fun foo(): <!RETURN_TYPE_MISMATCH_ON_OVERRIDE!>Any<!>
     {
         return ""
     }
 
-    override val a: Any?
+    override val a: <!PROPERTY_TYPE_MISMATCH_ON_OVERRIDE!>Any?<!>
     get() = TODO()
     override var b: String
     get() = TODO()
@@ -39,7 +30,7 @@ class Case1 : Base() {
 */
 
 class Case2(override val a: String, override var b: String) : Base() {
-    override fun foo(): CharSequence? {
+    override fun foo(): <!RETURN_TYPE_MISMATCH_ON_OVERRIDE!>CharSequence?<!> {
         return ""
     }
 }

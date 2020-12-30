@@ -47,7 +47,7 @@ import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.UserDataProperty
-import org.jetbrains.kotlin.utils.Jsr305State
+import org.jetbrains.kotlin.utils.JavaTypeEnhancementState
 import java.io.File
 
 val KtElement.platform: TargetPlatform
@@ -116,14 +116,18 @@ fun Module.getStableName(): Name {
 @JvmOverloads
 fun Project.getLanguageVersionSettings(
     contextModule: Module? = null,
-    jsr305State: Jsr305State? = null,
+    javaTypeEnhancementState: JavaTypeEnhancementState? = null,
     isReleaseCoroutines: Boolean? = null
 ): LanguageVersionSettings {
-    val arguments = KotlinCommonCompilerArgumentsHolder.getInstance(this).settings
+    val kotlinFacetSettings = contextModule?.let {
+        KotlinFacetSettingsProvider.getInstance(this)?.getInitializedSettings(it)
+    }
+
+    val arguments = kotlinFacetSettings?.compilerArguments ?: KotlinCommonCompilerArgumentsHolder.getInstance(this).settings
     val languageVersion =
-        LanguageVersion.fromVersionString(arguments.languageVersion)
-            ?: contextModule?.getAndCacheLanguageLevelByDependencies()
-            ?: VersionView.RELEASED_VERSION
+        kotlinFacetSettings?.languageLevel ?: LanguageVersion.fromVersionString(arguments.languageVersion)
+        ?: contextModule?.getAndCacheLanguageLevelByDependencies()
+        ?: VersionView.RELEASED_VERSION
     val apiVersion = ApiVersion.createByLanguageVersion(LanguageVersion.fromVersionString(arguments.apiVersion) ?: languageVersion)
     val compilerSettings = KotlinCompilerSettings.getInstance(this).settings
 
@@ -137,7 +141,6 @@ fun Project.getLanguageVersionSettings(
             CoroutineSupport.byCompilerArguments(KotlinCommonCompilerArgumentsHolder.getInstance(this@getLanguageVersionSettings).settings),
             languageVersion
         )
-        configureNewInferenceSupportInIDE(this@getLanguageVersionSettings)
         if (isReleaseCoroutines != null) {
             put(
                 LanguageFeature.ReleaseCoroutines,
@@ -147,7 +150,7 @@ fun Project.getLanguageVersionSettings(
     }
 
     val extraAnalysisFlags = additionalArguments.configureAnalysisFlags(MessageCollector.NONE).apply {
-        if (jsr305State != null) put(JvmAnalysisFlags.jsr305, jsr305State)
+        if (javaTypeEnhancementState != null) put(JvmAnalysisFlags.javaTypeEnhancementState, javaTypeEnhancementState)
         initIDESpecificAnalysisSettings(this@getLanguageVersionSettings)
     }
 
@@ -227,7 +230,6 @@ private fun Module.computeLanguageVersionSettings(): LanguageVersionSettings {
     val languageFeatures = facetSettings?.mergedCompilerArguments?.configureLanguageFeatures(MessageCollector.NONE)?.apply {
         configureCoroutinesSupport(facetSettings.coroutineSupport, languageVersion)
         configureMultiplatformSupport(facetSettings.targetPlatform?.idePlatformKind, this@computeLanguageVersionSettings)
-        configureNewInferenceSupportInIDE(project)
     }.orEmpty()
 
     val analysisFlags = facetSettings
@@ -247,6 +249,9 @@ private fun Module.computeLanguageVersionSettings(): LanguageVersionSettings {
 private fun MutableMap<AnalysisFlag<*>, Any>.initIDESpecificAnalysisSettings(project: Project) {
     if (KotlinMultiplatformAnalysisModeComponent.getMode(project) == KotlinMultiplatformAnalysisModeComponent.Mode.COMPOSITE) {
         put(AnalysisFlags.useTypeRefinement, true)
+    }
+    if (KotlinLibraryToSourceAnalysisComponent.isEnabled(project)) {
+        put(AnalysisFlags.libraryToSourceAnalysis, true)
     }
     put(AnalysisFlags.ideMode, true)
 }
@@ -294,14 +299,6 @@ fun MutableMap<LanguageFeature, LanguageFeature.State>.configureMultiplatformSup
 ) {
     if (platformKind.isCommon || module?.implementsCommonModule == true) {
         put(LanguageFeature.MultiPlatformProjects, LanguageFeature.State.ENABLED)
-    }
-}
-
-fun MutableMap<LanguageFeature, LanguageFeature.State>.configureNewInferenceSupportInIDE(
-    project: Project
-) {
-    if (NewInferenceForIDEAnalysisComponent.isEnabled(project)) {
-        putIfAbsent(LanguageFeature.NewInference, LanguageFeature.State.ENABLED)
     }
 }
 

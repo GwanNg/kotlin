@@ -5,10 +5,7 @@
 
 package org.jetbrains.kotlin.idea.test
 
-import com.intellij.codeInsight.daemon.impl.EditorTracker
 import com.intellij.openapi.project.Project
 
-// BUNCH: 192
-fun editorTrackerProjectOpened(project: Project) {
-    EditorTracker.getInstance(project)
+fun runPostStartupActivitiesOnce(project: Project) {
 }

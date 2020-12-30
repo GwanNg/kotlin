@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.tools.projectWizard.cli;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.util.KtTestUtil;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.runner.RunWith;
 
@@ -25,7 +26,7 @@ public class YamlBuildFileGenerationTestGenerated extends AbstractYamlBuildFileG
     }
 
     public void testAllFilesPresentInBuildFileGeneration() throws Exception {
-        KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("libraries/tools/new-project-wizard/new-project-wizard-cli/testData/buildFileGeneration"), Pattern.compile("^([^\\.]+)$"), null, false);
+        KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("libraries/tools/new-project-wizard/new-project-wizard-cli/testData/buildFileGeneration"), Pattern.compile("^([^\\.]+)$"), null, false);
     }
 
     @TestMetadata("android")
@@ -78,8 +79,13 @@ public class YamlBuildFileGenerationTestGenerated extends AbstractYamlBuildFileG
         runTest("libraries/tools/new-project-wizard/new-project-wizard-cli/testData/buildFileGeneration/simpleNativeTarget/");
     }
 
-    @TestMetadata("singleplatformJs")
-    public void testSingleplatformJs() throws Exception {
-        runTest("libraries/tools/new-project-wizard/new-project-wizard-cli/testData/buildFileGeneration/singleplatformJs/");
+    @TestMetadata("singlePlatformJsBrowser")
+    public void testSinglePlatformJsBrowser() throws Exception {
+        runTest("libraries/tools/new-project-wizard/new-project-wizard-cli/testData/buildFileGeneration/singlePlatformJsBrowser/");
+    }
+
+    @TestMetadata("singlePlatformJsNode")
+    public void testSinglePlatformJsNode() throws Exception {
+        runTest("libraries/tools/new-project-wizard/new-project-wizard-cli/testData/buildFileGeneration/singlePlatformJsNode/");
     }
 }

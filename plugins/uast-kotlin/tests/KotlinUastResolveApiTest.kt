@@ -5,14 +5,13 @@
 
 package org.jetbrains.uast.test.kotlin
 
-import com.intellij.psi.PsiClassType
-import com.intellij.psi.PsiMethod
-import com.intellij.psi.PsiType
+import com.intellij.psi.*
 import com.intellij.testFramework.LightProjectDescriptor
 import junit.framework.TestCase
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.test.KotlinWithJdkAndRuntimeLightProjectDescriptor
 import org.jetbrains.kotlin.test.JUnit3WithIdeaConfigurationRunner
+import org.jetbrains.kotlin.utils.addToStdlib.cast
 import org.jetbrains.uast.*
 import org.jetbrains.uast.kotlin.KotlinUFunctionCallExpression
 import org.jetbrains.uast.test.env.kotlin.findElementByText
@@ -37,7 +36,16 @@ class KotlinUastResolveApiTest : KotlinLightCodeInsightFixtureTestCase() {
         )
 
         val refs = file.findUElementByTextFromPsi<UQualifiedReferenceExpression>("s.toUpperCase()")
-        TestCase.assertNotNull((refs.receiver.getExpressionType() as PsiClassType).resolve())
+        val receiver = refs.receiver
+        TestCase.assertEquals(CommonClassNames.JAVA_LANG_STRING, (receiver.getExpressionType() as PsiClassType).resolve()!!.qualifiedName!!)
+        val resolve = receiver.cast<UReferenceExpression>().resolve()
+
+        val variable = file.findUElementByTextFromPsi<UVariable>("val s = \"abc\"")
+        TestCase.assertEquals(resolve, variable.javaPsi)
+        TestCase.assertTrue(
+            "resolved expression $resolve should be equivalent to ${variable.sourcePsi}",
+            PsiManager.getInstance(project).areElementsEquivalent(resolve, variable.sourcePsi)
+        )
     }
 
     fun testMultiResolve() {
@@ -79,7 +87,7 @@ class KotlinUastResolveApiTest : KotlinLightCodeInsightFixtureTestCase() {
             "s.kt", """
 
                 fun main(args: Array<String>) {
-                    System.out.print(""
+                    System.out.print("1"
                 }
                 """
         )
@@ -103,7 +111,7 @@ class KotlinUastResolveApiTest : KotlinLightCodeInsightFixtureTestCase() {
 
         TestCase.assertEquals(PsiType.VOID, functionCall.getExpressionType())
 
-        val firstArgument = main.findElementByText<UElement>("\"\"")
+        val firstArgument = main.findElementByText<UElement>("1")
         val firstParameter = functionCall.getArgumentForParameter(0)
         TestCase.assertEquals(firstArgument, firstParameter)
     }
@@ -124,7 +132,7 @@ class KotlinUastResolveApiTest : KotlinLightCodeInsightFixtureTestCase() {
             "s.kt", """
 
                 fun main(args: Array<String>) {
-                    JavaClass().setParameter(""
+                    JavaClass().setParameter("1"
                 }
                 """
         )
@@ -144,7 +152,7 @@ class KotlinUastResolveApiTest : KotlinLightCodeInsightFixtureTestCase() {
 
         TestCase.assertEquals(PsiType.VOID, functionCall.getExpressionType())
 
-        val firstArgument = main.findElementByText<UElement>("\"\"")
+        val firstArgument = main.findElementByText<UElement>("1")
         val firstParameter = functionCall.getArgumentForParameter(0)
         TestCase.assertEquals(firstArgument, firstParameter)
     }

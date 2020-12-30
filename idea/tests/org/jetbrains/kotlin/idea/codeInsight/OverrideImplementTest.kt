@@ -45,6 +45,10 @@ class OverrideImplementTest : AbstractOverrideImplementTest() {
         doImplementDirectoryTest()
     }
 
+    fun testJavaInterfaceMethodInCorrectOrder() {
+        doMultiImplementDirectoryTest()
+    }
+
     fun testJavaParameters() {
         doImplementDirectoryTest()
     }
@@ -329,5 +333,9 @@ class OverrideImplementTest : AbstractOverrideImplementTest() {
 
     fun testEnumClass4() {
         doOverrideFileTest("toString")
+    }
+
+    fun testOverrideExternalFunction() {
+        doOverrideFileTest()
     }
 }

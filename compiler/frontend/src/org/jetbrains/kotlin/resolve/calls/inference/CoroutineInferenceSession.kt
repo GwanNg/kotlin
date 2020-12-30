@@ -6,23 +6,22 @@
 package org.jetbrains.kotlin.resolve.calls.inference
 
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
+import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor
-import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor
-import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
-import org.jetbrains.kotlin.psi.KtDoubleColonExpression
-import org.jetbrains.kotlin.psi.KtReferenceExpression
+import org.jetbrains.kotlin.descriptors.impl.*
+import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.psiUtil.anyDescendantOfType
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.isAncestor
-import org.jetbrains.kotlin.resolve.BindingTrace
-import org.jetbrains.kotlin.resolve.DescriptorUtils
-import org.jetbrains.kotlin.resolve.MissingSupertypesResolver
-import org.jetbrains.kotlin.resolve.TemporaryBindingTrace
+import org.jetbrains.kotlin.resolve.*
 import org.jetbrains.kotlin.resolve.calls.ArgumentTypeResolver
 import org.jetbrains.kotlin.resolve.calls.components.CompletedCallInfo
 import org.jetbrains.kotlin.resolve.calls.components.NewConstraintSystemImpl
 import org.jetbrains.kotlin.resolve.calls.components.PostponedArgumentsAnalyzer
+import org.jetbrains.kotlin.resolve.calls.components.stableType
 import org.jetbrains.kotlin.resolve.calls.context.BasicCallResolutionContext
+import org.jetbrains.kotlin.resolve.calls.inference.components.ConstraintSystemCompletionMode
 import org.jetbrains.kotlin.resolve.calls.inference.components.KotlinConstraintSystemCompleter
 import org.jetbrains.kotlin.resolve.calls.inference.components.NewTypeSubstitutor
 import org.jetbrains.kotlin.resolve.calls.inference.components.NewTypeSubstitutorByConstructorMap
@@ -31,10 +30,8 @@ import org.jetbrains.kotlin.resolve.calls.model.*
 import org.jetbrains.kotlin.resolve.calls.tower.*
 import org.jetbrains.kotlin.resolve.calls.util.FakeCallableDescriptorForObject
 import org.jetbrains.kotlin.resolve.deprecation.DeprecationResolver
-import org.jetbrains.kotlin.types.StubType
-import org.jetbrains.kotlin.types.TypeApproximator
-import org.jetbrains.kotlin.types.TypeConstructor
-import org.jetbrains.kotlin.types.UnwrappedType
+import org.jetbrains.kotlin.resolve.descriptorUtil.hasBuilderInferenceAnnotation
+import org.jetbrains.kotlin.types.*
 import org.jetbrains.kotlin.types.expressions.DoubleColonExpressionResolver
 import org.jetbrains.kotlin.types.expressions.ExpressionTypingServices
 import org.jetbrains.kotlin.types.typeUtil.contains
@@ -61,7 +58,10 @@ class CoroutineInferenceSession(
     psiCallResolver, postponedArgumentsAnalyzer, kotlinConstraintSystemCompleter, callComponents, builtIns
 ) {
     private val commonCalls = arrayListOf<PSICompletedCallInfo>()
-    private val diagnostics = arrayListOf<KotlinCallDiagnostic>()
+
+    // Simple calls are calls which might not have gone through type inference, but may contain unsubstituted postponed variables inside their types.
+    private val simpleCommonCalls = arrayListOf<KtExpression>()
+
     private var hasInapplicableCall = false
 
     override fun shouldRunCompletion(candidate: KotlinResolutionCandidate): Boolean {
@@ -75,11 +75,39 @@ class CoroutineInferenceSession(
             return subResolvedAtoms?.any { it.hasPostponed() } == true
         }
 
+        if (!candidate.isSuitableForBuilderInference()) {
+            return true
+        }
+
         return !storage.notFixedTypeVariables.keys.any {
             val variable = storage.allTypeVariables[it]
             val isPostponed = variable != null && variable in storage.postponedTypeVariables
-            !isPostponed && !kotlinConstraintSystemCompleter.variableFixationFinder.isTypeVariableHasProperConstraint(system, it)
+            !isPostponed && !kotlinConstraintSystemCompleter.variableFixationFinder.isTypeVariableHasProperConstraint(
+                system,
+                it,
+            )
         } || candidate.getSubResolvedAtoms().any { it.hasPostponed() }
+    }
+
+    private fun KotlinResolutionCandidate.isSuitableForBuilderInference(): Boolean {
+        val extensionReceiver = resolvedCall.extensionReceiverArgument
+        val dispatchReceiver = resolvedCall.dispatchReceiverArgument
+        return when {
+            extensionReceiver == null && dispatchReceiver == null -> false
+            dispatchReceiver?.receiver?.stableType?.containsStubType() == true -> true
+            extensionReceiver?.receiver?.stableType?.containsStubType() == true -> resolvedCall.candidateDescriptor.hasBuilderInferenceAnnotation()
+            else -> false
+        }
+    }
+
+    private fun KotlinType.containsStubType(): Boolean {
+        return this.contains {
+            it is StubType
+        }
+    }
+
+    fun addSimpleCall(callExpression: KtExpression) {
+        simpleCommonCalls.add(callExpression)
     }
 
     override fun addCompletedCallInfo(callInfo: CompletedCallInfo) {
@@ -146,11 +174,17 @@ class CoroutineInferenceSession(
     override fun inferPostponedVariables(
         lambda: ResolvedLambdaAtom,
         initialStorage: ConstraintStorage,
-        diagnosticsHolder: KotlinDiagnosticsHolder
+        completionMode: ConstraintSystemCompletionMode,
+        diagnosticsHolder: KotlinDiagnosticsHolder,
     ): Map<TypeConstructor, UnwrappedType>? {
         val (commonSystem, effectivelyEmptyConstraintSystem) = buildCommonSystem(initialStorage)
+        val initialStorageSubstitutor = initialStorage.buildResultingSubstitutor(commonSystem, transformTypeVariablesToErrorTypes = false)
         if (effectivelyEmptyConstraintSystem) {
-            updateCalls(lambda, commonSystem)
+            updateCalls(
+                lambda,
+                initialStorageSubstitutor,
+                commonSystem.errors
+            )
             return null
         }
 
@@ -159,10 +193,13 @@ class CoroutineInferenceSession(
             context,
             builtIns.unitType,
             partiallyResolvedCallsInfo.map { it.callResolutionResult.resultCallAtom },
+            completionMode,
             diagnosticsHolder
         )
 
-        updateCalls(lambda, commonSystem)
+        val resultingSubstitutor =
+            ComposedSubstitutor(initialStorageSubstitutor, commonSystem.buildCurrentSubstitutor() as NewTypeSubstitutor)
+        updateCalls(lambda, resultingSubstitutor, commonSystem.errors)
 
         return commonSystem.fixedTypeVariables.cast() // TODO: SUB
     }
@@ -222,7 +259,7 @@ class CoroutineInferenceSession(
             for ((variableConstructor, type) in storage.fixedTypeVariables) {
                 val typeVariable = storage.allTypeVariables.getValue(variableConstructor)
                 commonSystem.registerVariable(typeVariable)
-                commonSystem.addEqualityConstraint((typeVariable as NewTypeVariable).defaultType, type, CoroutinePosition())
+                commonSystem.addEqualityConstraint((typeVariable as NewTypeVariable).defaultType, type, CoroutinePosition)
                 introducedConstraint = true
             }
         }
@@ -250,45 +287,45 @@ class CoroutineInferenceSession(
             if (hasConstraints) effectivelyEmptyCommonSystem = false
         }
 
-        for (diagnostic in diagnostics) {
-            commonSystem.addError(diagnostic)
-        }
-
         return commonSystem to effectivelyEmptyCommonSystem
     }
 
-    private fun updateCalls(lambda: ResolvedLambdaAtom, commonSystem: NewConstraintSystemImpl) {
+    private fun reportErrors(completedCall: CallInfo, resolvedCall: ResolvedCall<*>, errors: List<ConstraintSystemError>) {
+        kotlinToResolvedCallTransformer.reportCallDiagnostic(
+            completedCall.context,
+            trace,
+            completedCall.callResolutionResult.resultCallAtom,
+            resolvedCall.resultingDescriptor,
+            errors.asDiagnostics()
+        )
+    }
+
+    private fun updateCalls(lambda: ResolvedLambdaAtom, substitutor: NewTypeSubstitutor, errors: List<ConstraintSystemError>) {
         val nonFixedToVariablesSubstitutor = createNonFixedTypeToVariableSubstitutor()
-        val commonSystemSubstitutor = commonSystem.buildCurrentSubstitutor() as NewTypeSubstitutor
 
-        val nonFixedTypesToResult = nonFixedToVariablesSubstitutor.map.mapValues { commonSystemSubstitutor.safeSubstitute(it.value) }
+        val nonFixedTypesToResult = nonFixedToVariablesSubstitutor.map.mapValues { substitutor.safeSubstitute(it.value) }
+        val nonFixedTypesToResultSubstitutor = ComposedSubstitutor(substitutor, nonFixedToVariablesSubstitutor)
 
-        val nonFixedTypesToResultSubstitutor = ComposedSubstitutor(commonSystemSubstitutor, nonFixedToVariablesSubstitutor)
+        val atomCompleter = createResolvedAtomCompleter(nonFixedTypesToResultSubstitutor, topLevelCallContext)
 
         for (completedCall in commonCalls) {
             updateCall(completedCall, nonFixedTypesToResultSubstitutor, nonFixedTypesToResult)
-
-            kotlinToResolvedCallTransformer.reportCallDiagnostic(
-                completedCall.context,
-                trace,
-                completedCall.callResolutionResult.resultCallAtom,
-                completedCall.resolvedCall.resultingDescriptor,
-                commonSystem.diagnostics
-            )
+            reportErrors(completedCall, completedCall.resolvedCall, errors)
         }
 
-        val lambdaAtomCompleter = createResolvedAtomCompleter(nonFixedTypesToResultSubstitutor, topLevelCallContext)
         for (callInfo in partiallyResolvedCallsInfo) {
-            val resolvedCall = completeCall(callInfo, lambdaAtomCompleter) ?: continue
-            kotlinToResolvedCallTransformer.reportCallDiagnostic(
-                callInfo.context,
-                trace,
-                callInfo.callResolutionResult.resultCallAtom,
-                resolvedCall.resultingDescriptor,
-                commonSystem.diagnostics
-            )
+            val resolvedCall = completeCall(callInfo, atomCompleter) ?: continue
+            reportErrors(callInfo, resolvedCall, errors)
         }
-        lambdaAtomCompleter.completeAll(lambda)
+
+        for (simpleCall in simpleCommonCalls) {
+            when (simpleCall) {
+                is KtCallableReferenceExpression -> updateCallableReferenceType(simpleCall, nonFixedTypesToResultSubstitutor)
+                else -> throw Exception("Unsupported call expression type")
+            }
+        }
+
+        atomCompleter.completeAll(lambda)
     }
 
     private fun updateCall(
@@ -308,6 +345,28 @@ class CoroutineInferenceSession(
         )
 
         completeCall(completedCall, atomCompleter)
+    }
+
+    private fun updateCallableReferenceType(expression: KtCallableReferenceExpression, substitutor: NewTypeSubstitutor) {
+        val functionDescriptor = trace.get(BindingContext.DECLARATION_TO_DESCRIPTOR, expression) as? SimpleFunctionDescriptorImpl ?: return
+        val returnType = functionDescriptor.returnType
+
+        fun KotlinType.substituteAndApproximate() = typeApproximator.approximateDeclarationType(
+            substitutor.safeSubstitute(this.unwrap()),
+            local = true,
+            languageVersionSettings = topLevelCallContext.languageVersionSettings
+        )
+
+        if (returnType != null && returnType.contains { it is StubType }) {
+            functionDescriptor.setReturnType(returnType.substituteAndApproximate())
+        }
+
+        for (valueParameter in functionDescriptor.valueParameters) {
+            if (valueParameter !is ValueParameterDescriptorImpl || valueParameter.type !is StubType)
+                continue
+
+            valueParameter.setOutType(valueParameter.type.substituteAndApproximate())
+        }
     }
 
     private fun completeCall(
@@ -336,6 +395,19 @@ class CoroutineInferenceSession(
             expressionTypingServices, argumentTypeResolver, doubleColonExpressionResolver, builtIns,
             deprecationResolver, moduleDescriptor, context.dataFlowValueFactory, typeApproximator, missingSupertypesResolver
         )
+    }
+
+    /*
+     * It's used only for `+=` resolve to clear calls info before the second analysis of right side.
+     * TODO: remove it after moving `+=` resolve into OR mechanism
+     */
+    fun clearCallsInfoByContainingElement(containingElement: KtElement) {
+        commonCalls.removeIf remove@{ callInfo ->
+            val atom = callInfo.callResolutionResult.resultCallAtom.atom
+            if (atom !is PSIKotlinCallImpl) return@remove false
+
+            containingElement.anyDescendantOfType<KtElement> { it == atom.psiCall.callElement }
+        }
     }
 }
 

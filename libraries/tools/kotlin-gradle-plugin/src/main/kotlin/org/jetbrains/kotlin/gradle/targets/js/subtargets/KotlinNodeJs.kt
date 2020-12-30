@@ -7,9 +7,12 @@ package org.jetbrains.kotlin.gradle.targets.js.subtargets
 
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinJsCompilation
 import org.jetbrains.kotlin.gradle.targets.js.KotlinJsTarget
+import org.jetbrains.kotlin.gradle.targets.js.dsl.Distribution
+import org.jetbrains.kotlin.gradle.targets.js.dsl.ExperimentalDistributionDsl
 import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsNodeDsl
 import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsExec
 import org.jetbrains.kotlin.gradle.targets.js.testing.KotlinJsTest
+import org.jetbrains.kotlin.gradle.tasks.withType
 import javax.inject.Inject
 
 open class KotlinNodeJs @Inject constructor(target: KotlinJsTarget) :
@@ -21,7 +24,12 @@ open class KotlinNodeJs @Inject constructor(target: KotlinJsTarget) :
     private val runTaskName = disambiguateCamelCased("run")
 
     override fun runTask(body: NodeJsExec.() -> Unit) {
-        (project.tasks.getByName(runTaskName) as NodeJsExec).body()
+        project.tasks.withType<NodeJsExec>().named(runTaskName).configure(body)
+    }
+
+    @ExperimentalDistributionDsl
+    override fun distribution(body: Distribution.() -> Unit) {
+        TODO("Not yet implemented")
     }
 
     override fun testTask(body: KotlinJsTest.() -> Unit) {
@@ -41,7 +49,7 @@ open class KotlinNodeJs @Inject constructor(target: KotlinJsTarget) :
     ) {
         val runTaskHolder = NodeJsExec.create(compilation, disambiguateCamelCased(RUN_TASK_NAME)) {
             group = taskGroupName
-            inputFileProperty.set(compilation.compileKotlinTask.outputFile)
+            inputFileProperty.set(project.layout.file(compilation.compileKotlinTaskProvider.map { it.outputFile }))
         }
         target.runTask.dependsOn(runTaskHolder)
     }

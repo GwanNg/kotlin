@@ -7,9 +7,9 @@ class A {
     constructor(x: Int)
     constructor() : <!INAPPLICABLE_CANDIDATE!>this<!>(
             <!UNRESOLVED_REFERENCE!>foobar<!>() +
-            this.foobar() +
+            <!INSTANCE_ACCESS_BEFORE_SUPER_CALL!>this<!>.foobar() +
             <!UNRESOLVED_REFERENCE!>prop<!> +
-            this.prop +
-            this@A.prop
+            <!INSTANCE_ACCESS_BEFORE_SUPER_CALL!>this<!>.prop +
+            <!UNRESOLVED_LABEL!>this@A<!>.prop
     )
 }

@@ -20,9 +20,10 @@ import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.text.StringUtil
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import org.jetbrains.kotlin.test.TestCaseWithTmpdir
+import org.jetbrains.kotlin.test.util.KtTestUtil
 import org.jetbrains.kotlin.utils.PathUtil
 import org.jetbrains.kotlin.utils.addToStdlib.cast
-import java.io.*
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 class LauncherScriptTest : TestCaseWithTmpdir() {
@@ -75,7 +76,7 @@ class LauncherScriptTest : TestCaseWithTmpdir() {
         else args.cast()
 
     private val testDataDirectory: String
-        get() = KotlinTestUtils.getTestDataPathBase() + "/launcher"
+        get() = KtTestUtil.getTestDataPathBase() + "/launcher"
 
     fun testKotlincSimple() {
         runProcess(
@@ -173,6 +174,41 @@ class LauncherScriptTest : TestCaseWithTmpdir() {
             "a",
             "b",
             expectedStdout = "a, b, 4, 2\n"
+        )
+    }
+
+    fun testCommandlineProcessing() {
+        runProcess(
+            "kotlin",
+            "-e",
+            "println(args.joinToString())",
+            "-a",
+            "b",
+            expectedStdout = "-a, b\n"
+        )
+        runProcess(
+            "kotlin",
+            "-e",
+            "println(args.joinToString())",
+            "--",
+            "-a",
+            "b",
+            expectedStdout = "-a, b\n"
+        )
+        runProcess(
+            "kotlin",
+            "$testDataDirectory/printargs.kts",
+            "-a",
+            "b",
+            expectedStdout = "-a, b\n"
+        )
+        runProcess(
+            "kotlin",
+            "$testDataDirectory/printargs.kts",
+            "--",
+            "-a",
+            "b",
+            expectedStdout = "-a, b\n"
         )
     }
 

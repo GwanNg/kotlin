@@ -10,6 +10,9 @@ object AnalysisFlags {
     val skipMetadataVersionCheck by AnalysisFlag.Delegates.Boolean
 
     @JvmStatic
+    val skipPrereleaseCheck by AnalysisFlag.Delegates.Boolean
+
+    @JvmStatic
     val multiPlatformDoNotCheckActual by AnalysisFlag.Delegates.Boolean
 
     @JvmStatic
@@ -43,5 +46,8 @@ object AnalysisFlags {
     val ideMode by AnalysisFlag.Delegates.Boolean
 
     @JvmStatic
-    val reportErrorsOnIrDependencies by AnalysisFlag.Delegates.Boolean
+    val allowUnstableDependencies by AnalysisFlag.Delegates.Boolean
+
+    @JvmStatic
+    val libraryToSourceAnalysis by AnalysisFlag.Delegates.Boolean
 }
